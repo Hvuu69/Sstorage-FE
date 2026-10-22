@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { categoryApi } from '../src/api/categories.js'
 import { unitApi } from '../src/api/units.js'
 import { productApi } from '../src/api/products.js'
+import { dealerApi } from '../src/api/dealers.js'
+import { dealerRequestApi } from '../src/api/dealerRequests.js'
 import { authApi, toCurrentUser } from '../src/features/auth/api/authApi.js'
 import { ApiError, configureAccessTokenProvider } from '../src/api/http.js'
 
@@ -116,4 +118,61 @@ test('product create, detail, edit and status use the agreed API contract', asyn
   await productApi.changeStatus('p1', 'INACTIVE')
   assert.deepEqual(calls.map(({ method }) => method), ['POST', 'GET', 'PUT', 'PATCH'])
   assert.equal(JSON.parse(calls[3].body).status, 'INACTIVE')
+})
+
+test('dealer list sends search, status and pagination to backend', async () => {
+  let requestedUrl
+  global.fetch = async (url) => {
+    requestedUrl = url
+    return new Response(JSON.stringify({ content: [], page: 1, totalPages: 2 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  await dealerApi.list({ search: 'dl-01', active: false, page: 1, size: 10, sort: 'name,asc' })
+  assert.match(requestedUrl, /search=dl-01/)
+  assert.match(requestedUrl, /active=false/)
+  assert.match(requestedUrl, /page=1/)
+})
+
+test('dealer create, detail, update and status use manager API without delete', async () => {
+  const calls = []
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method ?? 'GET', body: options.body })
+    return new Response(JSON.stringify({ id: 'd1', dealerCode: 'DL-01' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  await dealerApi.create({ dealerCode: 'DL-01', name: 'Đại lý Một' })
+  await dealerApi.get('d1')
+  await dealerApi.update('d1', { name: 'Đại lý mới', phone: '', email: '', address: '' })
+  await dealerApi.changeStatus('d1', false)
+  assert.deepEqual(calls.map(({ method }) => method), ['POST', 'GET', 'PUT', 'PATCH'])
+  assert.equal(JSON.parse(calls[2].body).dealerCode, undefined)
+  assert.equal(JSON.parse(calls[3].body).active, false)
+})
+
+test('dealer request API separates own, manager review and staff approved contracts', async () => {
+  const calls = []
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method ?? 'GET', body: options.body })
+    return new Response(JSON.stringify(url.includes('/my') || url.endsWith('/dealer-requests') || url.includes('/approved')
+      ? { content: [], page: 0, totalPages: 0 } : { id: 'r1', status: 'PENDING' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  await dealerRequestApi.create({ items: [{ productId: 'p1', quantity: 2 }], note: '' })
+  await dealerRequestApi.listMine({ status: 'PENDING', page: 0, size: 10 })
+  await dealerRequestApi.getMine('r1')
+  await dealerRequestApi.listAll({ dealerId: 'd1', status: 'PENDING', from: '2026-10-01', to: '2026-10-22' })
+  await dealerRequestApi.get('r1')
+  await dealerRequestApi.approve('r1')
+  await dealerRequestApi.reject('r2', 'Không phù hợp')
+  await dealerRequestApi.listApproved({ page: 0, size: 20 })
+
+  assert.deepEqual(calls.map(({ method }) => method), ['POST', 'GET', 'GET', 'GET', 'GET', 'POST', 'POST', 'GET'])
+  assert.equal(JSON.parse(calls[0].body).dealerId, undefined)
+  assert.equal(JSON.parse(calls[0].body).status, undefined)
+  assert.equal(JSON.parse(calls[6].body).reason, 'Không phù hợp')
+  assert.match(calls[3].url, /dealerId=d1/)
+  assert.match(calls[7].url, /dealer-requests\/approved/)
 })
