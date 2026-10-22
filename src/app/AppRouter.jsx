@@ -5,6 +5,8 @@ import { ProtectedRoute, PublicOnlyRoute } from '../features/auth/ProtectedRoute
 import LoginPage from '../features/auth/pages/LoginPage.jsx'
 import CategoryPage from '../features/categories/pages/CategoryPage.jsx'
 import DashboardPage from '../features/dashboard/pages/DashboardPage.jsx'
+import DealerPage from '../features/dealers/pages/DealerPage.jsx'
+import DealerRequestPage from '../features/dealer-requests/pages/DealerRequestPage.jsx'
 import { ForbiddenPage, NotFoundPage } from '../features/integration/ErrorPages.jsx'
 import PendingFeaturePage from '../features/integration/PendingFeaturePage.jsx'
 import ProductPage from '../features/products/pages/ProductPage.jsx'
@@ -12,7 +14,7 @@ import UnitPage from '../features/units/pages/UnitPage.jsx'
 import AuthLayout from '../shared/layout/AuthLayout.jsx'
 import MainLayout from '../shared/layout/MainLayout.jsx'
 
-const activePages = { dashboard: <DashboardPage />, products: <ProductPage />, categories: <CategoryPage />, units: <UnitPage /> }
+const activePages = { dashboard: <DashboardPage />, products: <ProductPage />, categories: <CategoryPage />, units: <UnitPage />, dealers: <DealerPage />, 'dealer-requests': <DealerRequestPage /> }
 
 function HomeRedirect() {
   const { currentUser } = useAuth()
