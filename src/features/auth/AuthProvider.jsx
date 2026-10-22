@@ -11,8 +11,29 @@ function developmentUser() {
   return { userId: 'development-preview', email: 'preview@localhost', fullName: 'Development Preview', role, dealerId: role === ROLES.DEALER ? 'development-dealer' : null, accessToken: null, previewOnly: true }
 }
 
+const STORAGE_KEY = 'sstorage.auth'
+
+function readStoredUser() {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const user = validateCurrentUser(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null'))
+    return user?.accessToken ? user : null
+  } catch {
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* Storage may be unavailable. */ }
+    return null
+  }
+}
+
+function storeUser(user) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    if (user?.accessToken) localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* Keep the in-memory session if browser storage is unavailable. */ }
+}
+
 export default function AuthProvider({ children, initialUser = null, authAdapter = null }) {
-  const [currentUser, setCurrentUser] = useState(() => validateCurrentUser(initialUser) ?? developmentUser())
+  const [currentUser, setCurrentUser] = useState(() => validateCurrentUser(initialUser) ?? readStoredUser() ?? developmentUser())
   const [loading, setLoading] = useState(Boolean(authAdapter?.restoreSession))
   const [authorizationError, setAuthorizationError] = useState(null)
 
@@ -20,18 +41,39 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
     let active = true
     if (!authAdapter?.restoreSession) return undefined
     Promise.resolve(authAdapter.restoreSession())
-      .then((user) => { if (active) setCurrentUser(validateCurrentUser(user)) })
-      .catch(() => { if (active) setCurrentUser(null) })
+      .then((user) => {
+        if (active) {
+          const validUser = validateCurrentUser(user)
+          setCurrentUser(validUser)
+          storeUser(validUser)
+        }
+      })
+      .catch(() => { if (active) { setCurrentUser(null); storeUser(null) } })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [authAdapter])
 
   useEffect(() => { configureAccessTokenProvider(() => currentUser?.previewOnly ? null : currentUser?.accessToken ?? null) }, [currentUser])
   useEffect(() => {
-    configureHttpAuthHandlers({ onUnauthorized: () => setCurrentUser(null), onForbidden: (error) => setAuthorizationError(error) })
+    configureHttpAuthHandlers({ onUnauthorized: () => { setCurrentUser(null); storeUser(null) }, onForbidden: (error) => setAuthorizationError(error) })
     return () => configureHttpAuthHandlers()
   }, [])
 
-  const value = useMemo(() => ({ currentUser, loading, authorizationError, clearAuthorizationError: () => setAuthorizationError(null), establishSession: (user) => setCurrentUser(validateCurrentUser(user)), async logout() { try { await authAdapter?.logout?.() } finally { setCurrentUser(null) } } }), [authAdapter, authorizationError, currentUser, loading])
+  const value = useMemo(() => ({
+    currentUser,
+    loading,
+    authorizationError,
+    clearAuthorizationError: () => setAuthorizationError(null),
+    establishSession(user) {
+      const validUser = validateCurrentUser(user)
+      if (!validUser?.accessToken) throw new Error('Thông tin phiên đăng nhập không hợp lệ.')
+      setCurrentUser(validUser)
+      storeUser(validUser)
+    },
+    async logout() {
+      try { await authAdapter?.logout?.() }
+      finally { setCurrentUser(null); storeUser(null) }
+    },
+  }), [authAdapter, authorizationError, currentUser, loading])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

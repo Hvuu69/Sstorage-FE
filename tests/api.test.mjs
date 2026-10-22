@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { categoryApi } from '../src/api/categories.js'
 import { unitApi } from '../src/api/units.js'
 import { productApi } from '../src/api/products.js'
+import { authApi, toCurrentUser } from '../src/features/auth/api/authApi.js'
 import { ApiError, configureAccessTokenProvider } from '../src/api/http.js'
 
 test.afterEach(() => {
@@ -22,7 +23,39 @@ test('category list sends real pagination and search query', async () => {
   assert.match(request.url, /search=food/)
   assert.match(request.url, /page=1/)
   assert.match(request.url, /size=10/)
-  assert.equal(request.options.credentials, 'include')
+  assert.equal(request.options.credentials, 'omit')
+})
+
+test('login sends email and password and maps backend identity to the auth contract', async () => {
+  let request
+  global.fetch = async (url, options) => {
+    request = { url, options }
+    return new Response(JSON.stringify({
+      accessToken: 'signed-token',
+      tokenType: 'Bearer',
+      expiresIn: 900,
+      username: 'manager@example.com',
+      roles: ['WAREHOUSE_MANAGER'],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  const user = await authApi.login({ email: ' manager@example.com ', password: 'secret' })
+  assert.match(request.url, /\/api\/auth\/login$/)
+  assert.equal(request.options.method, 'POST')
+  assert.deepEqual(JSON.parse(request.options.body), { email: 'manager@example.com', password: 'secret' })
+  assert.deepEqual(user, {
+    userId: 'manager@example.com',
+    email: 'manager@example.com',
+    fullName: 'manager@example.com',
+    role: 'WAREHOUSE_MANAGER',
+    dealerId: null,
+    accessToken: 'signed-token',
+  })
+})
+
+test('login response rejects unknown roles and missing tokens', () => {
+  assert.throws(() => toCurrentUser({ accessToken: 'token', username: 'user@example.com', roles: ['UNKNOWN'] }), /không hợp lệ/)
+  assert.throws(() => toCurrentUser({ username: 'user@example.com', roles: ['DEALER'] }), /không hợp lệ/)
 })
 
 test('configured Auth provider supplies bearer token', async () => {

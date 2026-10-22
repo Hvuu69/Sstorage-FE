@@ -6,7 +6,7 @@ let authHandlers = { onUnauthorized: null, onForbidden: null }
 
 export class ApiError extends Error {
   constructor(problem, status, fallbackMessage) {
-    super(problem?.detail ?? fallbackMessage ?? 'Không thể xử lý yêu cầu.')
+    super(problem?.detail ?? problem?.message ?? fallbackMessage ?? 'Không thể xử lý yêu cầu.')
     this.name = 'ApiError'
     this.status = status
     this.errorCode = problem?.errorCode ?? (status === 0 ? 'NETWORK_ERROR' : undefined)
@@ -50,7 +50,7 @@ export async function request(path, options = {}) {
   try {
     response = await fetch(`${API_BASE_URL}${path}${buildQuery(query)}`, {
       ...fetchOptions,
-      credentials: 'include',
+      credentials: 'omit',
       headers: {
         Accept: 'application/json',
         ...(fetchOptions.body ? { 'Content-Type': 'application/json' } : {}),
