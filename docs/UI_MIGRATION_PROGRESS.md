@@ -10,6 +10,7 @@ Last updated: 2026-10-20
 | Category | `/categories` | List/create/update/status, search/pagination |
 | Unit | `/units` | List/create/update, search/pagination; không có status theo DDL |
 | User accounts | `/admin/users` | Admin list/search/filter/create/update/password reset/lock-unlock |
+| Role access matrix | `/admin/roles` | Read-only matrix from the frontend route registry; permission editing is not supported |
 
 ## Foundation, chưa có API nghiệp vụ
 

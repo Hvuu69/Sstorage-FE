@@ -14,7 +14,8 @@ Tài liệu này sắp xếp 16 use case theo quan hệ phụ thuộc dữ liệ
 | Đơn vị tính | Có CRUD API và frontend; đây là master data hỗ trợ UC-05, không có mã riêng trong bảng use case. |
 | UC-15 Dashboard | Có khung giao diện, chưa có API/số liệu nghiệp vụ. |
 | UC-02 | Đã có API quản trị tài khoản và giao diện Admin: tìm kiếm/lọc/phân trang, tạo/sửa, đặt lại mật khẩu, khóa/mở khóa; chưa có kiểm thử với database triển khai. |
-| UC-03–04, UC-06–14, UC-16 | Chưa có module nghiệp vụ hoàn chỉnh trong hai repo đã rà soát. |
+| UC-03 Vai trò và phân quyền | Frontend có ma trận xem quyền vào route từ registry; backend vẫn dùng role cố định và annotation, chưa hỗ trợ chỉnh permission động. |
+| UC-04, UC-06–14, UC-16 | Chưa có module nghiệp vụ hoàn chỉnh trong hai repo đã rà soát. |
 
 ## Các giai đoạn
 

@@ -24,7 +24,7 @@ export const appRoutes = Object.freeze([
   { path: '/alerts', label: 'Cảnh báo', icon: '!', group: 'Phân tích', roles: [MANAGER], module: 'alerts', status: 'pending' },
   { path: '/reports', label: 'Báo cáo', icon: '▥', group: 'Phân tích', roles: [MANAGER], module: 'reports', status: 'pending' },
   { path: '/admin/users', label: 'Người dùng', icon: '♙', group: 'Quản trị', roles: [ADMIN], module: 'users', status: 'active' },
-  { path: '/admin/roles', label: 'Vai trò & quyền', icon: '⚿', group: 'Quản trị', roles: [ADMIN], module: 'roles', status: 'pending' },
+  { path: '/admin/roles', label: 'Vai trò & quyền', icon: '⚿', group: 'Quản trị', roles: [ADMIN], module: 'roles', status: 'active' },
   { path: '/admin/audit', label: 'Nhật ký', icon: '≡', group: 'Quản trị', roles: [ADMIN], module: 'audit', status: 'pending' },
 ])
 
