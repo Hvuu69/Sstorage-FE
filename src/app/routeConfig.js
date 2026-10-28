@@ -23,7 +23,7 @@ export const appRoutes = Object.freeze([
   { path: '/ai-forecast', label: 'Dự báo AI', icon: '✦', group: 'Phân tích', roles: [MANAGER], module: 'ai-forecast', status: 'pending' },
   { path: '/alerts', label: 'Cảnh báo', icon: '!', group: 'Phân tích', roles: [MANAGER], module: 'alerts', status: 'pending' },
   { path: '/reports', label: 'Báo cáo', icon: '▥', group: 'Phân tích', roles: [MANAGER], module: 'reports', status: 'pending' },
-  { path: '/admin/users', label: 'Người dùng', icon: '♙', group: 'Quản trị', roles: [ADMIN], module: 'users', status: 'pending' },
+  { path: '/admin/users', label: 'Người dùng', icon: '♙', group: 'Quản trị', roles: [ADMIN], module: 'users', status: 'active' },
   { path: '/admin/roles', label: 'Vai trò & quyền', icon: '⚿', group: 'Quản trị', roles: [ADMIN], module: 'roles', status: 'pending' },
   { path: '/admin/audit', label: 'Nhật ký', icon: '≡', group: 'Quản trị', roles: [ADMIN], module: 'audit', status: 'pending' },
 ])

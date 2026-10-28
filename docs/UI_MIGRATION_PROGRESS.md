@@ -9,6 +9,7 @@ Last updated: 2026-10-20
 | Product | `/products` | List/detail/create/update/status, search/filter/pagination, role-specific stock visibility |
 | Category | `/categories` | List/create/update/status, search/pagination |
 | Unit | `/units` | List/create/update, search/pagination; không có status theo DDL |
+| User accounts | `/admin/users` | Admin list/search/filter/create/update/password reset/lock-unlock |
 
 ## Foundation, chưa có API nghiệp vụ
 
@@ -16,7 +17,7 @@ Last updated: 2026-10-20
 - `/suppliers`, `/dealers`, `/dealer-requests`.
 - `/inbound`, `/outbound`, `/inventory`, `/stocktaking`, `/identification`.
 - `/ai-forecast`, `/alerts`, `/reports`.
-- `/admin/users`, `/admin/roles`, `/admin/audit`.
+- `/admin/roles`, `/admin/audit`.
 
 Các route trên có shell, navigation, RBAC và trạng thái chờ tích hợp; không mô phỏng thành công.
 

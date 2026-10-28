@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ROLES } from '../../app/routeConfig.js'
 import { configureAccessTokenProvider, configureHttpAuthHandlers } from '../../shared/api/http.js'
 import { AuthContext, validateCurrentUser } from './authContext.js'
@@ -34,13 +34,16 @@ function storeUser(user) {
 
 export default function AuthProvider({ children, initialUser = null, authAdapter = null }) {
   const [currentUser, setCurrentUser] = useState(() => validateCurrentUser(initialUser) ?? readStoredUser() ?? developmentUser())
+  const initialUserRef = useRef(currentUser)
   const [loading, setLoading] = useState(Boolean(authAdapter?.restoreSession))
   const [authorizationError, setAuthorizationError] = useState(null)
+
+  useEffect(() => { configureAccessTokenProvider(() => currentUser?.previewOnly ? null : currentUser?.accessToken ?? null) }, [currentUser])
 
   useEffect(() => {
     let active = true
     if (!authAdapter?.restoreSession) return undefined
-    Promise.resolve(authAdapter.restoreSession())
+    Promise.resolve(authAdapter.restoreSession(initialUserRef.current))
       .then((user) => {
         if (active) {
           const validUser = validateCurrentUser(user)
@@ -53,7 +56,6 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
     return () => { active = false }
   }, [authAdapter])
 
-  useEffect(() => { configureAccessTokenProvider(() => currentUser?.previewOnly ? null : currentUser?.accessToken ?? null) }, [currentUser])
   useEffect(() => {
     configureHttpAuthHandlers({ onUnauthorized: () => { setCurrentUser(null); storeUser(null) }, onForbidden: (error) => setAuthorizationError(error) })
     return () => configureHttpAuthHandlers()

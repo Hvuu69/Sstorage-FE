@@ -35,6 +35,11 @@ test('login sends email and password and maps backend identity to the auth contr
       tokenType: 'Bearer',
       expiresIn: 900,
       username: 'manager@example.com',
+      userId: 'user-1',
+      email: 'manager@example.com',
+      fullName: 'Quản lý kho',
+      role: 'WAREHOUSE_MANAGER',
+      dealerId: null,
       roles: ['WAREHOUSE_MANAGER'],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
@@ -44,13 +49,35 @@ test('login sends email and password and maps backend identity to the auth contr
   assert.equal(request.options.method, 'POST')
   assert.deepEqual(JSON.parse(request.options.body), { email: 'manager@example.com', password: 'secret' })
   assert.deepEqual(user, {
-    userId: 'manager@example.com',
+    userId: 'user-1',
     email: 'manager@example.com',
-    fullName: 'manager@example.com',
+    fullName: 'Quản lý kho',
     role: 'WAREHOUSE_MANAGER',
     dealerId: null,
     accessToken: 'signed-token',
   })
+})
+
+test('stored session is verified with the backend and keeps its bearer token', async () => {
+  let authorization
+  configureAccessTokenProvider(() => 'signed-token')
+  global.fetch = async (url, options) => {
+    assert.match(url, /\/api\/auth\/me$/)
+    authorization = options.headers.Authorization
+    return new Response(JSON.stringify({
+      userId: 'user-1',
+      email: 'manager@example.com',
+      fullName: 'Quản lý kho',
+      role: 'WAREHOUSE_MANAGER',
+      dealerId: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  const user = await authApi.restoreSession({ accessToken: 'signed-token' })
+  assert.equal(authorization, 'Bearer signed-token')
+  assert.equal(user.userId, 'user-1')
+  assert.equal(user.fullName, 'Quản lý kho')
+  assert.equal(user.accessToken, 'signed-token')
 })
 
 test('login response rejects unknown roles and missing tokens', () => {
