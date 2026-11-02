@@ -21,6 +21,7 @@ test('role navigation follows the approved matrix and gives no anonymous default
   assert.equal(routesForRole(null).length, 0)
   assert.equal(canAccessRoute(ROLES.ADMIN, '/products'), false)
   assert.equal(canAccessRoute(ROLES.WAREHOUSE_MANAGER, '/products'), true)
+  assert.equal(canAccessRoute(ROLES.WAREHOUSE_MANAGER, '/identification'), true)
   assert.equal(canAccessRoute(ROLES.WAREHOUSE_STAFF, '/categories'), false)
   assert.equal(canAccessRoute(ROLES.WAREHOUSE_STAFF, '/identification'), true)
   assert.equal(canAccessRoute(ROLES.DEALER, '/inventory'), false)
@@ -73,6 +74,7 @@ test('sidebar only renders routes allowed for the current role', async () => {
     const manager = renderFor(ROLES.WAREHOUSE_MANAGER)
     assert.match(manager, /Sản phẩm/)
     assert.match(manager, /Danh mục/)
+    assert.match(manager, /Nhận diện QR &amp; Barcode/)
     assert.doesNotMatch(manager, /Quản lý người dùng/)
 
     const dealer = renderFor(ROLES.DEALER)

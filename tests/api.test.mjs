@@ -5,6 +5,7 @@ import { unitApi } from '../src/api/units.js'
 import { productApi } from '../src/api/products.js'
 import { dealerApi } from '../src/api/dealers.js'
 import { dealerRequestApi } from '../src/api/dealerRequests.js'
+import { identificationApi } from '../src/api/identification.js'
 import { authApi, toCurrentUser } from '../src/features/auth/api/authApi.js'
 import { ApiError, configureAccessTokenProvider } from '../src/api/http.js'
 
@@ -175,4 +176,25 @@ test('dealer request API separates own, manager review and staff approved contra
   assert.equal(JSON.parse(calls[6].body).reason, 'Không phù hợp')
   assert.match(calls[3].url, /dealerId=d1/)
   assert.match(calls[7].url, /dealer-requests\/approved/)
+})
+
+test('identification API separates lookup, manager registration, status and QR metadata', async () => {
+  const calls = []
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method ?? 'GET', body: options.body })
+    return new Response(JSON.stringify({ id: 'identifier-1', identifierValue: 'QR-SP-01' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  await identificationApi.lookup('QR SP/01')
+  await identificationApi.listForProduct('product-1')
+  await identificationApi.create('product-1', { type: 'QR', value: null })
+  await identificationApi.changeStatus('identifier-1', false)
+  await identificationApi.qrCode('product-1', 'identifier-1')
+
+  assert.match(calls[0].url, /identifiers\/lookup\?code=QR\+SP%2F01/)
+  assert.match(calls[1].url, /products\/product-1\/identifiers$/)
+  assert.deepEqual(JSON.parse(calls[2].body), { type: 'QR', value: null })
+  assert.deepEqual(JSON.parse(calls[3].body), { active: false })
+  assert.match(calls[4].url, /qr-code\?identifierId=identifier-1/)
 })
