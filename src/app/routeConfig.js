@@ -19,7 +19,7 @@ export const appRoutes = Object.freeze([
   { path: '/outbound', label: 'Xuất kho', icon: '↗', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'outbound', status: 'pending' },
   { path: '/inventory', label: 'Tồn kho', icon: '▤', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'inventory', status: 'pending' },
   { path: '/stocktaking', label: 'Kiểm kê', icon: '☷', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'stocktaking', status: 'pending' },
-  { path: '/identification', label: 'Nhận diện QR/RFID', icon: '⌗', group: 'Kiểm soát', roles: [STAFF], module: 'identification', status: 'pending' },
+  { path: '/identification', label: 'Nhận diện QR & Barcode', icon: '⌗', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'identification', status: 'active' },
   { path: '/ai-forecast', label: 'Dự báo AI', icon: '✦', group: 'Phân tích', roles: [MANAGER], module: 'ai-forecast', status: 'pending' },
   { path: '/alerts', label: 'Cảnh báo', icon: '!', group: 'Phân tích', roles: [MANAGER], module: 'alerts', status: 'pending' },
   { path: '/reports', label: 'Báo cáo', icon: '▥', group: 'Phân tích', roles: [MANAGER], module: 'reports', status: 'pending' },

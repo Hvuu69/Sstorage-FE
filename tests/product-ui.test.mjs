@@ -62,3 +62,12 @@ test('detail includes stock only for internal roles', () => {
   assert.match(internal, /Tồn kho hiện tại/)
   assert.doesNotMatch(dealer, /Tồn kho hiện tại/)
 })
+
+test('manager product detail exposes identifier management without stock mutation fields', () => {
+  const product = { id: 'p1', sku: 'SP-01', name: 'Một', status: 'ACTIVE', categoryCode: 'FOOD', categoryName: 'Thực phẩm', unitName: 'Thùng', unitSymbol: 'th', quantityOnHand: 12 }
+  const html = renderWithProviders(createElement(components.ProductDetail, { product, showStock: true, manageIdentifiers: true, onClose() {} }))
+  assert.match(html, /Mã nhận diện/)
+  assert.match(html, /Đăng ký QR/)
+  assert.match(html, /Barcode chờ migration schema/)
+  assert.doesNotMatch(html, /name="quantityOnHand"/)
+})
