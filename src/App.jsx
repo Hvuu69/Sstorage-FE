@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+
+import AppProviders from './app/AppProviders.jsx'
+import AppRouter from './app/AppRouter.jsx'
+
+
 
 function App() {
   const [count, setCount] = useState(0)
