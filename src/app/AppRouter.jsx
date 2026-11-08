@@ -1,3 +1,4 @@
+// src/app/AppRouter.jsx
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { appRoutes, canAccessRoute, firstRouteForRole } from './routeConfig.js'
 import { useAuth } from '../features/auth/authContext.js'
@@ -8,21 +9,38 @@ import DashboardPage from '../features/dashboard/pages/DashboardPage.jsx'
 import DealerPage from '../features/dealers/pages/DealerPage.jsx'
 import DealerRequestPage from '../features/dealer-requests/pages/DealerRequestPage.jsx'
 import { ForbiddenPage, NotFoundPage } from '../features/integration/ErrorPages.jsx'
-import IdentificationPage from '../features/identification/pages/IdentificationPage.jsx'
 import PendingFeaturePage from '../features/integration/PendingFeaturePage.jsx'
-import ProductPage from '../features/products/pages/ProductPage.jsx'
+
+// THÊM IMPORT SUPPLIER PAGE
+import SupplierPage from '../features/suppliers/pages/SupplierPage.jsx'
+
+import ProductPage, { 
+  ImportPage, 
+  ExportPage, 
+  InventoryPage, 
+  AuditPage, 
+  QrScanPage 
+} from '../features/products/pages/ProductPage.jsx'
+
 import UnitPage from '../features/units/pages/UnitPage.jsx'
 import AuthLayout from '../shared/layout/AuthLayout.jsx'
 import MainLayout from '../shared/layout/MainLayout.jsx'
 
-const activePages = {
-  dashboard: <DashboardPage />,
-  products: <ProductPage />,
-  categories: <CategoryPage />,
-  units: <UnitPage />,
-  dealers: <DealerPage />,
+const activePages = { 
+  dashboard: <DashboardPage />, 
+  products: <ProductPage />, 
+  categories: <CategoryPage />, 
+  units: <UnitPage />, 
+  dealers: <DealerPage />, 
   'dealer-requests': <DealerRequestPage />,
-  identification: <IdentificationPage />,
+  'imports': <ImportPage />, 
+  'exports': <ExportPage />, 
+  'inventory': <InventoryPage />,
+  'audit': <AuditPage />, 
+  'qr-scan': <QrScanPage />,
+  
+  // THÊM SUPPLIER
+  'suppliers': <SupplierPage />, 
 }
 
 function HomeRedirect() {

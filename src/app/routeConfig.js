@@ -12,20 +12,25 @@ export const appRoutes = Object.freeze([
   { path: '/products', label: 'Sản phẩm', icon: '▦', group: 'Danh mục', roles: [MANAGER, STAFF, DEALER], module: 'products', status: 'active' },
   { path: '/categories', label: 'Danh mục', icon: '◇', group: 'Danh mục', roles: [MANAGER], module: 'categories', status: 'active' },
   { path: '/units', label: 'Đơn vị tính', icon: '◫', group: 'Danh mục', roles: [MANAGER], module: 'units', status: 'active' },
-  { path: '/suppliers', label: 'Nhà cung cấp', icon: '▣', group: 'Đối tác', roles: [MANAGER], module: 'suppliers', status: 'pending' },
+  
+  // ĐÃ SỬA DÒNG NÀY: pending -> active
+  { path: '/suppliers', label: 'Nhà cung cấp', icon: '▣', group: 'Đối tác', roles: [MANAGER], module: 'suppliers', status: 'active' },
+  
   { path: '/dealers', label: 'Đại lý', icon: '◎', group: 'Đối tác', roles: [MANAGER], module: 'dealers', status: 'active' },
   { path: '/dealer-requests', label: 'Yêu cầu đại lý', icon: '◩', group: 'Vận hành', roles: [MANAGER, DEALER], module: 'dealer-requests', status: 'active' },
-  { path: '/inbound', label: 'Nhập kho', icon: '↘', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'inbound', status: 'pending' },
-  { path: '/outbound', label: 'Xuất kho', icon: '↗', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'outbound', status: 'pending' },
-  { path: '/inventory', label: 'Tồn kho', icon: '▤', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'inventory', status: 'pending' },
-  { path: '/stocktaking', label: 'Kiểm kê', icon: '☷', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'stocktaking', status: 'pending' },
-  { path: '/identification', label: 'Nhận diện QR & Barcode', icon: '⌗', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'identification', status: 'active' },
+  
+  { path: '/inbound', label: 'Nhập kho', icon: '↘', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'imports', status: 'active' }, 
+  { path: '/outbound', label: 'Xuất kho', icon: '↗', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'exports', status: 'active' },
+  { path: '/inventory', label: 'Tồn kho', icon: '▤', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'inventory', status: 'active' },
+  { path: '/stocktaking', label: 'Kiểm kê', icon: '☷', group: 'Kiểm soát', roles: [MANAGER, STAFF], module: 'audit', status: 'active' },
+  { path: '/identification', label: 'Nhận diện QR/RFID', icon: '⌗', group: 'Kiểm soát', roles: [STAFF], module: 'qr-scan', status: 'active' },
+  
   { path: '/ai-forecast', label: 'Dự báo AI', icon: '✦', group: 'Phân tích', roles: [MANAGER], module: 'ai-forecast', status: 'pending' },
   { path: '/alerts', label: 'Cảnh báo', icon: '!', group: 'Phân tích', roles: [MANAGER], module: 'alerts', status: 'pending' },
   { path: '/reports', label: 'Báo cáo', icon: '▥', group: 'Phân tích', roles: [MANAGER], module: 'reports', status: 'pending' },
   { path: '/admin/users', label: 'Người dùng', icon: '♙', group: 'Quản trị', roles: [ADMIN], module: 'users', status: 'pending' },
   { path: '/admin/roles', label: 'Vai trò & quyền', icon: '⚿', group: 'Quản trị', roles: [ADMIN], module: 'roles', status: 'pending' },
-  { path: '/admin/audit', label: 'Nhật ký', icon: '≡', group: 'Quản trị', roles: [ADMIN], module: 'audit', status: 'pending' },
+  { path: '/admin/audit', label: 'Nhật ký', icon: '≡', group: 'Quản trị', roles: [ADMIN], module: 'audit-log', status: 'pending' },
 ])
 
 export const publicRoutes = Object.freeze([{ path: '/login', label: 'Đăng nhập' }])

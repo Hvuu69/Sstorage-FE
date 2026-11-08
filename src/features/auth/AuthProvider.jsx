@@ -54,8 +54,18 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
   }, [authAdapter])
 
   useEffect(() => { configureAccessTokenProvider(() => currentUser?.previewOnly ? null : currentUser?.accessToken ?? null) }, [currentUser])
+  
   useEffect(() => {
-    configureHttpAuthHandlers({ onUnauthorized: () => { setCurrentUser(null); storeUser(null) }, onForbidden: (error) => setAuthorizationError(error) })
+    configureHttpAuthHandlers({ 
+      onUnauthorized: () => { 
+        setCurrentUser(null); 
+        storeUser(null) 
+      }, 
+      onForbidden: (error) => {
+        // BỎ QUA KHÔNG LƯU LỖI 403 VÀO STATE ĐỂ KHÔNG HIỂN THỊ RA UI
+        console.warn("Forbidden access:", error?.message);
+      } 
+    })
     return () => configureHttpAuthHandlers()
   }, [])
 
