@@ -115,14 +115,6 @@ export default function AuthProvider({
     useState(null)
 
   useEffect(() => {
-    configureAccessTokenProvider(() =>
-      currentUser?.previewOnly
-        ? null
-        : currentUser?.accessToken ?? null
-    )
-  }, [currentUser])
-
-  useEffect(() => {
     let active = true
 
     if (!authAdapter?.restoreSession) {

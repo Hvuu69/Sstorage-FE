@@ -44,6 +44,8 @@ const activePages = {
   dealers: <DealerPage />,
   'dealer-requests': <DealerRequestPage />,
   identification: <IdentificationPage />,
+  users: <UserAdminPage />,
+  roles: <RolesPage />,
 
   // Các module đã tích hợp
   stocktaking: <StocktakingPage />,
