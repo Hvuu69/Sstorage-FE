@@ -29,4 +29,10 @@ export const authApi = {
     })
     return toCurrentUser(response)
   },
+  restoreSession: async (currentUser) => {
+    if (currentUser?.previewOnly) return currentUser
+    if (!currentUser?.accessToken) return null
+    const profile = await request('/api/auth/me')
+    return toCurrentUser({ ...profile, accessToken: currentUser.accessToken })
+  },
 }

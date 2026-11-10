@@ -12,18 +12,12 @@ import IdentificationPage from '../features/identification/pages/IdentificationP
 import PendingFeaturePage from '../features/integration/PendingFeaturePage.jsx'
 import ProductPage from '../features/products/pages/ProductPage.jsx'
 import UnitPage from '../features/units/pages/UnitPage.jsx'
+import UserAdminPage from '../features/users/pages/UserAdminPage.jsx'
+import RolesPage from '../features/roles/pages/RolesPage.jsx'
 import AuthLayout from '../shared/layout/AuthLayout.jsx'
 import MainLayout from '../shared/layout/MainLayout.jsx'
 
-const activePages = {
-  dashboard: <DashboardPage />,
-  products: <ProductPage />,
-  categories: <CategoryPage />,
-  units: <UnitPage />,
-  dealers: <DealerPage />,
-  'dealer-requests': <DealerRequestPage />,
-  identification: <IdentificationPage />,
-}
+const activePages = { dashboard: <DashboardPage />, products: <ProductPage />, categories: <CategoryPage />, units: <UnitPage />, users: <UserAdminPage />, roles: <RolesPage /> }
 
 function HomeRedirect() {
   const { currentUser } = useAuth()
