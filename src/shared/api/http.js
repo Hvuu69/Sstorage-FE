@@ -99,6 +99,7 @@ async function executeRequest(
   fetchOptions,
   headers,
   token,
+  skipAuthRedirect = false,
 ) {
   let response
 
@@ -167,14 +168,14 @@ async function executeRequest(
      * 401 từ request không có token không được phép
      * tự động xóa phiên người dùng.
      */
-    if (
+    if (!skipAuthRedirect &&
       response.status === 401 &&
       token
     ) {
       authHandlers.onUnauthorized?.(error)
     }
 
-    if (response.status === 403) {
+    if (!skipAuthRedirect && response.status === 403) {
       authHandlers.onForbidden?.(error)
     }
 
@@ -197,6 +198,7 @@ export async function request(path, options = {}) {
   const {
     query,
     headers,
+    skipAuthRedirect = false,
     ...fetchOptions
   } = options
 
@@ -234,6 +236,7 @@ export async function request(path, options = {}) {
     fetchOptions,
     headers,
     token,
+    skipAuthRedirect,
   )
 
   if (requestKey) {

@@ -12,7 +12,10 @@ export const appRoutes = Object.freeze([
   { path: '/products', label: 'Sản phẩm', icon: '▦', group: 'Danh mục', roles: [MANAGER, STAFF, DEALER], module: 'products', status: 'active' },
   { path: '/categories', label: 'Danh mục', icon: '◇', group: 'Danh mục', roles: [MANAGER], module: 'categories', status: 'active' },
   { path: '/units', label: 'Đơn vị tính', icon: '◫', group: 'Danh mục', roles: [MANAGER], module: 'units', status: 'active' },
-  { path: '/suppliers', label: 'Nhà cung cấp', icon: '▣', group: 'Đối tác', roles: [MANAGER], module: 'suppliers', status: 'pending' },
+  
+  // ĐÃ SỬA DÒNG NÀY: pending -> active
+  { path: '/suppliers', label: 'Nhà cung cấp', icon: '▣', group: 'Đối tác', roles: [MANAGER], module: 'suppliers', status: 'active' },
+  
   { path: '/dealers', label: 'Đại lý', icon: '◎', group: 'Đối tác', roles: [MANAGER], module: 'dealers', status: 'active' },
   { path: '/dealer-requests', label: 'Yêu cầu đại lý', icon: '◩', group: 'Vận hành', roles: [MANAGER, DEALER], module: 'dealer-requests', status: 'active' },
   { path: '/inbound', label: 'Nhập kho', icon: '↘', group: 'Vận hành', roles: [MANAGER, STAFF], module: 'inbound', status: 'pending' },

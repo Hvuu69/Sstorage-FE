@@ -1,3 +1,4 @@
+// src/app/AppRouter.jsx
 import { Navigate, Route, Routes } from 'react-router-dom'
 import {
   appRoutes,
@@ -24,7 +25,16 @@ import {
 
 import IdentificationPage from '../features/identification/pages/IdentificationPage.jsx'
 import PendingFeaturePage from '../features/integration/PendingFeaturePage.jsx'
-import ProductPage from '../features/products/pages/ProductPage.jsx'
+
+// THÊM IMPORT SUPPLIER PAGE
+import SupplierPage from '../features/suppliers/pages/SupplierPage.jsx'
+
+import ProductPage, { 
+  ImportPage, 
+  ExportPage, 
+  AuditPage 
+} from '../features/products/pages/ProductPage.jsx'
+
 import UnitPage from '../features/units/pages/UnitPage.jsx'
 import UserAdminPage from '../features/users/pages/UserAdminPage.jsx'
 import RolesPage from '../features/roles/pages/RolesPage.jsx'
@@ -36,12 +46,12 @@ import AuthLayout from '../shared/layout/AuthLayout.jsx'
 import MainLayout from '../shared/layout/MainLayout.jsx'
 import InventoryPage from '../features/inventory/pages/InventoryPage.jsx'
 
-const activePages = {
-  dashboard: <DashboardPage />,
-  products: <ProductPage />,
-  categories: <CategoryPage />,
-  units: <UnitPage />,
-  dealers: <DealerPage />,
+const activePages = { 
+  dashboard: <DashboardPage />, 
+  products: <ProductPage />, 
+  categories: <CategoryPage />, 
+  units: <UnitPage />, 
+  dealers: <DealerPage />, 
   'dealer-requests': <DealerRequestPage />,
   identification: <IdentificationPage />,
   users: <UserAdminPage />,
@@ -51,6 +61,12 @@ const activePages = {
   stocktaking: <StocktakingPage />,
   alerts: <AlertsPage />,
   inventory: <InventoryPage />,
+  'inbound': <ImportPage />, 
+  'outbound': <ExportPage />, 
+  'audit': <AuditPage />, 
+  
+  // THÊM SUPPLIER
+  'suppliers': <SupplierPage />, 
 }
 
 function HomeRedirect() {

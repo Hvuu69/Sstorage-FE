@@ -114,6 +114,13 @@ export default function AuthProvider({
   const [authorizationError, setAuthorizationError] =
     useState(null)
 
+  // Sử dụng ref để giữ token/user mới nhất mà không cần cấu hình lại provider
+  const userRef = useRef(currentUser)
+  
+  useEffect(() => {
+    userRef.current = currentUser
+  }, [currentUser])
+
   useEffect(() => {
     let active = true
 
@@ -147,21 +154,26 @@ export default function AuthProvider({
     }
   }, [authAdapter])
 
+  // ✅ SỬA TẠI ĐÂY: Chạy 1 lần duy nhất, đọc từ userRef để luôn lấy token mới nhất
+  useEffect(() => { 
+    configureAccessTokenProvider(() => {
+      if (userRef.current?.previewOnly) return null;
+      return userRef.current?.accessToken ?? null;
+    }) 
+  }, [])
+  
   useEffect(() => {
-    configureHttpAuthHandlers({
-      onUnauthorized: () => {
-        setCurrentUser(null)
-        storeUser(null)
-      },
-
+    configureHttpAuthHandlers({ 
+      onUnauthorized: () => { 
+        setCurrentUser(null); 
+        storeUser(null) 
+      }, 
       onForbidden: (error) => {
-        setAuthorizationError(error)
-      },
+        // BỎ QUA KHÔNG LƯU LỖI 403 VÀO STATE ĐỂ KHÔNG HIỂN THỊ RA UI
+        console.warn("Forbidden access:", error?.message);
+      } 
     })
-
-    return () => {
-      configureHttpAuthHandlers()
-    }
+    return () => configureHttpAuthHandlers()
   }, [])
 
   const value = useMemo(() => ({
