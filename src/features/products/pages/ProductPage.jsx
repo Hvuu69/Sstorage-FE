@@ -4,7 +4,7 @@ import { categoryApi } from '../../categories/api/categoryApi.js'
 import { unitApi } from '../../units/api/unitApi.js'
 import usePagedResource from '../../../shared/hooks/usePagedResource.js'
 import { ConfirmDialog, Modal, StatusBadge, useToast } from '../../../shared/ui/index.js'
-import { productApi } from '../api/productApi.js'
+import { productApi, importApi, exportApi, supplierApi } from '../api/productApi.js'
 import { canManageProducts, canViewInternalStock } from '../productPermissions.js'
 
 // ==========================================
@@ -38,6 +38,7 @@ const s = {
   codeText: { color: '#2563eb', fontWeight: 'bold' },
   badgeSuccess: { backgroundColor: '#ecfdf5', color: '#065f46', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '500' },
   badgePending: { backgroundColor: '#fef3c7', color: '#92400e', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '500' },
+  badgeDanger: { backgroundColor: '#fee2e2', color: '#991b1b', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '500' },
   btnAction: { background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: '500', padding: 0, transition: 'opacity 0.2s' },
   pagination: { padding: '16px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   btnPage: { backgroundColor: '#fff', border: '1px solid #d1d5db', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', color: '#374151', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s' },
@@ -67,18 +68,12 @@ const s = {
   confirmTitle: { fontSize: '18px', fontWeight: 'bold', color: '#111827', margin: '0 0 8px 0' },
   confirmText: { fontSize: '14px', color: '#4b5563', margin: '0 0 24px 0', lineHeight: '1.5' },
   confirmActions: { display: 'flex', justifyContent: 'center', gap: '12px' },
-  
-  toastWrapper: { position: 'fixed', top: '24px', right: '24px', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 20px', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)', fontWeight: '500', fontSize: '14px', minWidth: '280px', border: '1px solid', backdropFilter: 'blur(10px)', animation: 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' },
-  toastSuccess: { backgroundColor: 'rgba(236, 253, 245, 0.95)', borderColor: '#10b981', color: '#065f46' },
-  toastIcon: { width: '24px', height: '24px', flexShrink: 0 },
-  toastClose: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'inherit', opacity: 0.6, marginLeft: 'auto', transition: 'opacity 0.2s' }
 };
 
 // Nhúng Keyframes
 if (typeof document !== 'undefined') {
   const styleTag = document.createElement('style');
   styleTag.innerHTML = `
-    @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     input:focus, select:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important; }
     button:not(:disabled):hover { filter: brightness(0.95); }
@@ -92,33 +87,23 @@ const SearchIcon = () => (
   </svg>
 );
 
-const SAMPLE_PRODUCTS = [
-  { id: 1, name: 'Sữa tươi tiệt trùng 1L', sku: 'SP-001', unit: 'hộp' },
-  { id: 2, name: 'Nước khoáng 500ml', sku: 'SP-014', unit: 'chai' },
-  { id: 3, name: 'Mì ăn liền vị bò', sku: 'SP-023', unit: 'gói' },
-  { id: 4, name: 'Nước rửa chén 750ml', sku: 'SP-031', unit: 'chai' },
-  { id: 5, name: 'Giấy vệ sinh 10 cuộn', sku: 'SP-045', unit: 'lốc' },
-];
-
 // ==========================================
-// TOAST COMPONENT
+// HELPERS XỬ LÝ STATUS PHIẾU
 // ==========================================
-function CustomToast({ message, onClose }) {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 3000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-  
-  return (
-    <div style={{ ...s.toastWrapper, ...s.toastSuccess }}>
-      <svg style={s.toastIcon} viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>
-      </svg>
-      <span style={{ fontWeight: '600' }}>{message}</span>
-      <button onClick={onClose} style={s.toastClose}>×</button>
-    </div>
-  );
-}
+const getVoucherStatusLabel = (status) => {
+  if (status === 'COMPLETED' || status === 'Hoàn tất') return 'Hoàn tất';
+  if (status === 'CANCELLED' || status === 'Đã hủy') return 'Đã hủy';
+  return 'Nháp';
+};
+const getVoucherStatusStyle = (status) => {
+  const label = getVoucherStatusLabel(status);
+  if (label === 'Hoàn tất') return s.badgeSuccess;
+  if (label === 'Đã hủy') return s.badgeDanger;
+  return s.badgePending;
+};
+const isDraftVoucher = (status) => {
+  return status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'Hoàn tất' && status !== 'Đã hủy';
+};
 
 // ==========================================
 // MODAL CHI TIẾT SẢN PHẨM
@@ -147,35 +132,51 @@ function ProductDetailModal({ product, onClose, showStock }) {
 // MODAL XEM CHI TIẾT PHIẾU NHẬP/XUẤT
 // ==========================================
 function VoucherDetailModal({ voucher, onClose, onRequestConfirm }) {
-  const isDraft = voucher.status === 'Nháp';
+  const isDraft = isDraftVoucher(voucher.status);
+  const statusLabel = getVoucherStatusLabel(voucher.status);
+  const totalQty = voucher.totalQuantity ?? voucher.qty ?? 0;
+  const items = voucher.items || voucher.lines || [];
 
   return (
     <div style={s.modalOverlay}>
       <div style={{ ...s.modalContent, maxWidth: '600px' }}>
         <div style={s.modalHeader}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Chi tiết {voucher.id}</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Chi tiết {voucher.code || voucher.id}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
         
         <div style={s.modalBody}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={isDraft ? s.badgePending : s.badgeSuccess}>{voucher.status}</span>
-            <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Tổng: {voucher.qty}</span>
+            <span style={getVoucherStatusStyle(voucher.status)}>{statusLabel}</span>
+            <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Tổng: {totalQty}</span>
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div style={s.detailItem}><span style={s.detailLabel}>Đối tác</span><span style={s.detailValue}>{voucher.partner}</span></div>
-            <div style={s.detailItem}><span style={s.detailLabel}>Ngày tạo</span><span style={s.detailValue}>{voucher.date}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Đối tác</span><span style={s.detailValue}>{voucher.partner || '—'}</span></div>
+            <div style={s.detailItem}>
+              <span style={s.detailLabel}>Ngày tạo</span>
+              <span style={s.detailValue}>
+                {voucher.createdAt
+                  ? new Date(voucher.createdAt).toLocaleString('vi-VN')
+                  : (voucher.date || '—')}
+              </span>
+            </div>
           </div>
 
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
             <table style={s.table}>
               <thead style={{ backgroundColor: '#f9fafb' }}><tr><th style={{ ...s.th, textTransform: 'none' }}>Sản phẩm</th><th style={{ ...s.th, textTransform: 'none', textAlign: 'right' }}>Số lượng</th></tr></thead>
               <tbody>
-                {voucher.items && voucher.items.length > 0 ? voucher.items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td style={s.td}><strong>{item.name}</strong><br/><span style={{ fontSize: '12px', color: '#6b7280' }}>{item.sku}</span></td>
-                    <td style={{ ...s.td, textAlign: 'right' }}><strong>{item.quantity}</strong> {item.unit}</td>
+                {items.length > 0 ? items.map((item, idx) => (
+                  <tr key={item.id ?? idx}>
+                    <td style={s.td}>
+                      <strong>{item.name || item.productName || '—'}</strong>
+                      <br/>
+                      <span style={{ fontSize: '12px', color: '#6b7280' }}>{item.sku || item.productSku || ''}</span>
+                    </td>
+                    <td style={{ ...s.td, textAlign: 'right' }}>
+                      <strong>{item.quantity}</strong> {item.unit || item.unitSymbol || ''}
+                    </td>
                   </tr>
                 )) : (
                   <tr><td colSpan="2" style={s.td}>Không có sản phẩm.</td></tr>
@@ -241,66 +242,238 @@ export function ProductForm({ entity, categories, units, onClose, onSaved }) {
 }
 
 // ==========================================
-// MODAL TẠO PHIẾU NHẬP KHO
+// MODAL TẠO PHIẾU NHẬP KHO (CÓ TÌM KIẾM NCC)
 // ==========================================
 function CreateImportModal({ onClose, onSave }) {
+  const { notify } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [quantities, setQuantities] = useState({});
-  const [supplier, setSupplier] = useState('Nước giải khát Việt Xanh');
+  
+  const [suppliers, setSuppliers] = useState([]);
+  const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [isAddingSupplier, setIsAddingSupplier] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  
+  // ✅ State cho phần tìm kiếm nhà cung cấp
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
+  const [searchSupplier, setSearchSupplier] = useState('');
+  const dropdownRef = useRef(null);
+
+  const [products, setProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      productApi.list({ page: 0, size: 100, status: 'ACTIVE' }),
+      supplierApi.list()
+    ])
+      .then(([prodRes, supRes]) => {
+        setProducts(prodRes?.content || []);
+        const supList = supRes || [];
+        setSuppliers(supList);
+        if (supList.length > 0) setSelectedSupplier(supList[0].name);
+      })
+      .catch(err => notify(err.message || 'Lỗi tải dữ liệu', 'error'))
+      .finally(() => {
+        setLoadingProducts(false);
+        setLoadingSuppliers(false);
+      });
+  }, []);
+
+  // ✅ Click ra ngoài để đóng dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsSupplierDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleQtyChange = (id, val) => setQuantities(prev => ({ ...prev, [id]: val }));
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      const selectedItems = SAMPLE_PRODUCTS
-        .filter(p => Number(quantities[p.id]) > 0)
-        .map(p => ({ ...p, quantity: Number(quantities[p.id]) }));
-      
-      if (selectedItems.length === 0) {
-        alert("Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.");
-        return;
-      }
-      const totalQty = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
-      onSave('Nháp', totalQty, supplier, selectedItems); 
-    }, 500);
+  const handleAddSupplier = async () => {
+    if (!newSupplierName.trim()) return;
+    try {
+      const newSup = await supplierApi.create(newSupplierName.trim());
+      setSuppliers(prev => [...prev, newSup]);
+      setSelectedSupplier(newSup.name);
+      setIsAddingSupplier(false);
+      setNewSupplierName('');
+      notify('Đã thêm nhà cung cấp mới.');
+    } catch (err) {
+      notify('Lỗi khi thêm nhà cung cấp.', 'error');
+    }
   };
 
+  const handleSave = async () => {
+    if (!selectedSupplier) {
+      notify('Vui lòng chọn nhà cung cấp.', 'error');
+      return;
+    }
+
+    const selectedItems = products
+      .filter(p => Number(quantities[p.id]) > 0)
+      .map(p => ({ productId: p.id, quantity: Number(quantities[p.id]) }));
+
+    if (selectedItems.length === 0) {
+      notify('Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.', 'error');
+      return;
+    }
+
+     setIsSaving(true);
+    try {
+      // ✅ Gửi đúng cấu trúc Backend yêu cầu
+      await onSave({
+        partnerName: request.trim(), // Lấy mã yêu cầu làm tên đối tác
+        note: '',
+        lines: selectedItems,
+      });
+    } catch (e) {
+      notify(e?.message || 'Không tạo được phiếu xuất.', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Lọc danh sách nhà cung cấp theo từ khóa tìm kiếm
+  const filteredSuppliers = suppliers.filter(sup => 
+    sup.name.toLowerCase().includes(searchSupplier.toLowerCase())
+  );
+
   return (
-    <div style={s.modalOverlay}>
-      <div style={{ ...s.modalContent, maxWidth: '650px' }}>
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={{ ...s.modalContent, maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
         <div style={s.modalHeader}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Tạo phiếu nhập nháp</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
+        
         <div style={s.modalBody}>
-          <div style={s.prodInputGroup}>
-            <label style={s.prodLabel}>Nhà cung cấp *</label>
-            <select style={s.prodInput} value={supplier} onChange={(e) => setSupplier(e.target.value)}>
-              <option>Nước giải khát Việt Xanh</option>
-              <option>Công ty Thực phẩm An Khang</option>
-            </select>
+          {/* PHẦN NHÀ CUNG CẤP CÓ TÌM KIẾM */}
+          <div style={s.prodInputGroup} ref={dropdownRef}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <label style={s.prodLabel}>Nhà cung cấp *</label>
+              {!isAddingSupplier && (
+                <button 
+                  onClick={() => setIsAddingSupplier(true)} 
+                  style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '13px', fontWeight: '500', padding: 0 }}
+                >
+                  + Thêm nhà cung cấp mới
+                </button>
+              )}
+            </div>
+            
+            {isAddingSupplier ? (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  placeholder="Nhập tên nhà cung cấp mới..." 
+                  style={{ ...s.prodInput, flex: 1 }} 
+                  value={newSupplierName} 
+                  onChange={(e) => setNewSupplierName(e.target.value)} 
+                  autoFocus
+                />
+                <button onClick={handleAddSupplier} style={{ ...s.btnPrimary, backgroundColor: '#10b981', padding: '0 16px' }}>Lưu</button>
+                <button onClick={() => setIsAddingSupplier(false)} style={{ padding: '0 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button>
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                {/* Ô hiển thị nhà cung cấp đã chọn */}
+                <div 
+                  onClick={() => { setIsSupplierDropdownOpen(!isSupplierDropdownOpen); setSearchSupplier(''); }}
+                  style={{ ...s.prodInput, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span style={{ color: selectedSupplier ? '#111827' : '#9ca3af' }}>
+                    {loadingSuppliers ? 'Đang tải nhà cung cấp...' : (selectedSupplier || 'Chọn nhà cung cấp...')}
+                  </span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+
+                {/* Dropdown hiện ra khi click */}
+                {isSupplierDropdownOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '250px', display: 'flex', flexDirection: 'column' }}>
+                    {/* Ô tìm kiếm */}
+                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Tìm nhà cung cấp..." 
+                        value={searchSupplier}
+                        onChange={(e) => setSearchSupplier(e.target.value)}
+                        style={{ ...s.prodInput, padding: '8px 12px' }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    </div>
+                    {/* Danh sách kết quả */}
+                    <div style={{ overflowY: 'auto' }}>
+                      {filteredSuppliers.length === 0 ? (
+                        <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>Không tìm thấy nhà cung cấp.</div>
+                      ) : (
+                        filteredSuppliers.map((sup) => (
+                          <div 
+                            key={sup.id || sup.name}
+                            onClick={() => { setSelectedSupplier(sup.name); setIsSupplierDropdownOpen(false); }}
+                            style={{ padding: '10px 12px', cursor: 'pointer', fontSize: '14px', backgroundColor: selectedSupplier === sup.name ? '#eff6ff' : '#fff', color: selectedSupplier === sup.name ? '#2563eb' : '#374151', borderBottom: '1px solid #f3f4f6' }}
+                            onMouseEnter={(e) => { if (selectedSupplier !== sup.name) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                            onMouseLeave={(e) => { if (selectedSupplier !== sup.name) e.currentTarget.style.backgroundColor = '#fff'; }}
+                          >
+                            {sup.name}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* KHUNG CHỨA BẢNG SẢN PHẨM (Dùng Grid để không bao giờ tràn) */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-            <table style={s.table}>
-              <thead style={{ backgroundColor: '#f9fafb' }}><tr><th style={{ ...s.th, textTransform: 'none' }}>Sản phẩm</th><th style={{ ...s.th, textTransform: 'none', textAlign: 'right' }}>Số lượng</th></tr></thead>
-              <tbody>
-                {SAMPLE_PRODUCTS.map(p => (
-                  <tr key={p.id}>
-                    <td style={s.td}><strong>{p.name}</strong><br/><span style={{ fontSize: '12px', color: '#6b7280' }}>{p.sku}</span></td>
-                    <td style={{ ...s.td, textAlign: 'right' }}>
-                      <input type="number" min="0" placeholder="0" value={quantities[p.id] || ''} onChange={(e) => handleQtyChange(p.id, e.target.value)} style={{ ...s.prodInput, width: '100px', textAlign: 'right', backgroundColor: '#f9fafb' }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {/* Header của bảng */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '12px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
+                <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none' }}>Sản phẩm</div>
+                <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none', textAlign: 'right' }}>Số lượng</div>
+              </div>
+              
+              {/* Danh sách sản phẩm */}
+              {loadingProducts ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Đang tải danh sách sản phẩm...</div>
+              ) : products.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Không có sản phẩm nào.</div>
+              ) : (
+                products.map(p => (
+                  <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '16px', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
+                    <div style={{ wordBreak: 'break-word' }}>
+                      <strong style={{ fontSize: '14px' }}>{p.name}</strong>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{p.sku}</div>
+                    </div>
+                    <div>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        placeholder="0" 
+                        value={quantities[p.id] || ''} 
+                        onChange={(e) => handleQtyChange(p.id, e.target.value)} 
+                        style={{ ...s.prodInput, textAlign: 'center', padding: '8px', backgroundColor: '#f9fafb' }} 
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
+
         <div style={s.modalFooter}>
           <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button>
-          <button onClick={handleSave} disabled={isSaving} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>{isSaving ? 'Đang lưu...' : 'Lưu nháp'}</button>
+          <button onClick={handleSave} disabled={isSaving || loadingProducts} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>
+            {isSaving ? 'Đang lưu...' : 'Lưu nháp'}
+          </button>
         </div>
       </div>
     </div>
@@ -311,64 +484,114 @@ function CreateImportModal({ onClose, onSave }) {
 // MODAL TẠO PHIẾU XUẤT KHO
 // ==========================================
 function CreateExportModal({ onClose, onSave }) {
+  const { notify } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [quantities, setQuantities] = useState({});
   const [request, setRequest] = useState('');
+  const [products, setProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  useEffect(() => {
+    productApi.list({ page: 0, size: 100, status: 'ACTIVE' })
+      .then(res => setProducts(res?.content || []))
+      .catch(err => notify(err.message || 'Lỗi tải sản phẩm', 'error'))
+      .finally(() => setLoadingProducts(false));
+  }, []);
 
   const handleQtyChange = (id, val) => setQuantities(prev => ({ ...prev, [id]: val }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!request.trim()) {
+      notify('Vui lòng nhập mã yêu cầu đã duyệt.', 'error');
+      return;
+    }
+    const selectedItems = products
+      .filter(p => Number(quantities[p.id]) > 0)
+      .map(p => ({ productId: p.id, quantity: Number(quantities[p.id]) }));
+
+    if (selectedItems.length === 0) {
+      notify('Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.', 'error');
+      return;
+    }
+
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      await onSave({
+        requestCode: request.trim(),
+        partnerName: request,
+        note: '',
+        lines: selectedItems,
+      });
+    } catch (e) {
+      notify(e?.message || 'Không tạo được phiếu xuất.', 'error');
+    } finally {
       setIsSaving(false);
-      const selectedItems = SAMPLE_PRODUCTS
-        .filter(p => Number(quantities[p.id]) > 0)
-        .map(p => ({ ...p, quantity: Number(quantities[p.id]) }));
-      
-      if (selectedItems.length === 0) {
-        alert("Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.");
-        return;
-      }
-      const totalQty = selectedItems.reduce((sum, item) => sum + item.quantity, 0);
-      onSave('Nháp', totalQty, request || 'Khách lẻ', selectedItems);
-    }, 500);
+    }
   };
 
   return (
-    <div style={s.modalOverlay}>
-      <div style={{ ...s.modalContent, maxWidth: '650px' }}>
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={{ ...s.modalContent, maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
         <div style={s.modalHeader}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Tạo phiếu xuất từ yêu cầu đã duyệt</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
+        
         <div style={s.modalBody}>
           <div style={s.prodInputGroup}>
-            <label style={s.prodLabel}>Yêu cầu đã duyệt *</label>
-            <select style={s.prodInput} value={request} onChange={(e) => setRequest(e.target.value)}>
-              <option value="">Chọn yêu cầu đã duyệt...</option>
-              <option value="YC-DEMO-001">YC-DEMO-001 - Công ty An Khang</option>
-              <option value="YC-DEMO-002">YC-DEMO-002 - Đại lý Hùng Thịnh</option>
-            </select>
+            <label style={s.prodLabel}>Mã yêu cầu / Đối tác *</label>
+            <input 
+              type="text" 
+              placeholder="VD: YC-DEMO-001 hoặc Tên đối tác..." 
+              style={s.prodInput} 
+              value={request} 
+              onChange={(e) => setRequest(e.target.value)} 
+            />
           </div>
+
+          {/* KHUNG CHỨA BẢNG SẢN PHẨM (Dùng Grid để không bao giờ tràn) */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
-            <table style={s.table}>
-              <thead style={{ backgroundColor: '#f9fafb' }}><tr><th style={{ ...s.th, textTransform: 'none' }}>Sản phẩm</th><th style={{ ...s.th, textTransform: 'none', textAlign: 'right' }}>Số lượng</th></tr></thead>
-              <tbody>
-                {SAMPLE_PRODUCTS.map(p => (
-                  <tr key={p.id}>
-                    <td style={s.td}><strong>{p.name}</strong><br/><span style={{ fontSize: '12px', color: '#6b7280' }}>{p.sku}</span></td>
-                    <td style={{ ...s.td, textAlign: 'right' }}>
-                      <input type="number" min="0" placeholder="0" value={quantities[p.id] || ''} onChange={(e) => handleQtyChange(p.id, e.target.value)} style={{ ...s.prodInput, width: '100px', textAlign: 'right', backgroundColor: '#f9fafb' }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {/* Header của bảng */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '12px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
+                <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none' }}>Sản phẩm</div>
+                <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none', textAlign: 'right' }}>Số lượng</div>
+              </div>
+              
+              {/* Danh sách sản phẩm */}
+              {loadingProducts ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Đang tải danh sách sản phẩm...</div>
+              ) : products.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Không có sản phẩm nào.</div>
+              ) : (
+                products.map(p => (
+                  <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '16px', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
+                    <div style={{ wordBreak: 'break-word' }}>
+                      <strong style={{ fontSize: '14px' }}>{p.name}</strong>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{p.sku}</div>
+                    </div>
+                    <div>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        placeholder="0" 
+                        value={quantities[p.id] || ''} 
+                        onChange={(e) => handleQtyChange(p.id, e.target.value)} 
+                        style={{ ...s.prodInput, textAlign: 'center', padding: '8px', backgroundColor: '#f9fafb' }} 
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
+
         <div style={s.modalFooter}>
           <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button>
-          <button onClick={handleSave} disabled={isSaving} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>{isSaving ? 'Đang lưu...' : 'Lưu nháp'}</button>
+          <button onClick={handleSave} disabled={isSaving || loadingProducts} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>
+            {isSaving ? 'Đang lưu...' : 'Lưu nháp'}
+          </button>
         </div>
       </div>
     </div>
@@ -379,48 +602,67 @@ function CreateExportModal({ onClose, onSave }) {
 // TRANG NHẬP KHO
 // ==========================================
 export function ImportPage() {
+  const { notify } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState(null);
-  const [vouchers, setVouchers] = useState(() => getCache('import_vouchers') || []);
+  const [vouchers, setVouchers] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-  const [toastMsg, setToastMsg] = useState('');
 
-  useEffect(() => { setCache('import_vouchers', vouchers); }, [vouchers]);
+  const isMounted = useRef(false);
 
-  const filteredVouchers = vouchers.filter(v => 
-    v.id?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    v.partner?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleSaveNew = (status, qty, partner, items) => {
-    const newVoucher = {
-      id: `PN-${Date.now().toString().slice(-6)}`,
-      partner: partner,
-      date: new Date().toLocaleString('vi-VN'),
-      qty: qty,
-      status: status,
-      items: items
-    };
-    setVouchers([newVoucher, ...vouchers]);
-    setShowCreateModal(false);
-  };
-
-  const handleVoucherAction = (action) => {
-    if (action === 'cancel') {
-      setVouchers(vouchers.filter(v => v.id !== selectedVoucher.id));
-      setToastMsg('Đã hủy phiếu.');
-      setSelectedVoucher(null);
-    } else if (action === 'confirm') {
-      setConfirmAction('confirm');
+  const loadVouchers = async () => {
+    setLoadingList(true);
+    try {
+      const page = await importApi.list({ page: 0, size: 100, sort: 'createdAt,desc' });
+      setVouchers(page?.content || []);
+    } catch (e) {
+      notify(e?.message || 'Không tải được danh sách phiếu nhập.', 'error');
+    } finally {
+      setLoadingList(false);
     }
   };
 
-  const executeConfirm = () => {
-    setVouchers(vouchers.map(v => v.id === selectedVoucher.id ? { ...v, status: 'Hoàn tất' } : v));
-    setToastMsg('Đã xác nhận nhập kho.');
-    setConfirmAction(null);
-    setSelectedVoucher(null);
+  useEffect(() => {
+    if (isMounted.current) return;
+    isMounted.current = true;
+    loadVouchers();
+  }, []);
+
+  const filteredVouchers = vouchers.filter(v =>
+    (v.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    String(v.id ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (v.partner || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSaveNew = async (payload) => {
+    const created = await importApi.create(payload);
+    setShowCreateModal(false);
+    await loadVouchers();
+    notify('Đã tạo phiếu nhập nháp.');
+    return created;
+  };
+
+  const handleVoucherAction = (action) => {
+    if (action === 'cancel' || action === 'confirm') setConfirmAction(action);
+  };
+
+  const executeAction = async () => {
+    try {
+      if (confirmAction === 'cancel') {
+        await importApi.cancel(selectedVoucher.id);
+        notify('Đã hủy phiếu nhập.');
+      } else if (confirmAction === 'confirm') {
+        await importApi.complete(selectedVoucher.id);
+        notify('Đã xác nhận nhập kho.');
+      }
+      setConfirmAction(null);
+      setSelectedVoucher(null);
+      await loadVouchers();
+    } catch (e) {
+      notify(e?.message || 'Thao tác thất bại.', 'error');
+    }
   };
 
   return (
@@ -437,16 +679,18 @@ export function ImportPage() {
         <table style={s.table}>
           <thead><tr><th style={s.th}>MÃ PHIẾU</th><th style={s.th}>ĐỐI TÁC</th><th style={s.th}>NGÀY TẠO</th><th style={s.th}>TỔNG SL</th><th style={s.th}>TRẠNG THÁI</th><th style={s.th}></th></tr></thead>
           <tbody>
-            {filteredVouchers.length === 0 ? (
+            {loadingList ? (
+              <tr><td colSpan="6" style={s.emptyTd}>Đang tải dữ liệu...</td></tr>
+            ) : filteredVouchers.length === 0 ? (
               <tr><td colSpan="6" style={s.emptyTd}>Không tìm thấy phiếu nhập nào phù hợp.</td></tr>
             ) : (
               filteredVouchers.map((row) => (
                 <tr key={row.id}>
-                  <td style={s.td}><span style={s.codeText}>{row.id}</span></td>
-                  <td style={s.td}>{row.partner}</td>
-                  <td style={s.td}>{row.date}</td>
-                  <td style={s.td}>{row.qty}</td>
-                  <td style={s.td}><span style={row.status === 'Hoàn tất' ? s.badgeSuccess : s.badgePending}>{row.status}</span></td>
+                  <td style={s.td}><span style={s.codeText}>{row.code || row.id}</span></td>
+                  <td style={s.td}>{row.partner || '—'}</td>
+                  <td style={s.td}>{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : (row.date || '—')}</td>
+                  <td style={s.td}>{row.totalQuantity ?? row.qty ?? 0}</td>
+                  <td style={s.td}><span style={getVoucherStatusStyle(row.status)}>{getVoucherStatusLabel(row.status)}</span></td>
                   <td style={s.td}><button style={s.btnAction} onClick={() => setSelectedVoucher(row)}>Chi tiết</button></td>
                 </tr>
               ))
@@ -464,20 +708,33 @@ export function ImportPage() {
         />
       )}
 
-      {confirmAction === 'confirm' && (
+      {confirmAction && (
         <div style={{ ...s.modalOverlay, zIndex: 100 }}>
           <div style={s.confirmBox}>
-            <h3 style={s.confirmTitle}>Xác nhận nhập kho</h3>
-            <p style={s.confirmText}>Bạn có chắc chắn muốn hoàn tất phiếu nhập <strong>{selectedVoucher?.id}</strong>? Thao tác này sẽ làm thay đổi tồn kho.</p>
+            <h3 style={s.confirmTitle}>
+              {confirmAction === 'confirm' ? 'Xác nhận nhập kho' : 'Hủy phiếu nhập'}
+            </h3>
+            <p style={s.confirmText}>
+              {confirmAction === 'confirm'
+                ? <>Bạn có chắc chắn muốn hoàn tất phiếu nhập <strong>{selectedVoucher?.code || selectedVoucher?.id}</strong>? Thao tác này sẽ làm thay đổi tồn kho.</>
+                : <>Bạn có chắc muốn hủy phiếu <strong>{selectedVoucher?.code || selectedVoucher?.id}</strong>?</>}
+            </p>
             <div style={s.confirmActions}>
-              <button onClick={() => setConfirmAction(null)} style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Hủy</button>
-              <button onClick={executeConfirm} style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: '500' }}>Đồng ý</button>
+              <button onClick={() => setConfirmAction(null)} style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Không</button>
+              <button
+                onClick={executeAction}
+                style={{
+                  padding: '10px 24px', borderRadius: '8px', border: 'none',
+                  backgroundColor: confirmAction === 'confirm' ? '#2563eb' : '#e11d48',
+                  color: '#fff', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Đồng ý
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {toastMsg && <CustomToast message={toastMsg} onClose={() => setToastMsg('')} />}
     </div>
   );
 }
@@ -486,48 +743,67 @@ export function ImportPage() {
 // TRANG XUẤT KHO
 // ==========================================
 export function ExportPage() {
+  const { notify } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState(null);
-  const [vouchers, setVouchers] = useState(() => getCache('export_vouchers') || []);
+  const [vouchers, setVouchers] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-  const [toastMsg, setToastMsg] = useState('');
 
-  useEffect(() => { setCache('export_vouchers', vouchers); }, [vouchers]);
+  const isMounted = useRef(false);
 
-  const filteredVouchers = vouchers.filter(v => 
-    v.id?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    v.partner?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleSaveNew = (status, qty, partner, items) => {
-    const newVoucher = {
-      id: `PX-${Date.now().toString().slice(-6)}`,
-      partner: partner,
-      date: new Date().toLocaleString('vi-VN'),
-      qty: qty,
-      status: status,
-      items: items
-    };
-    setVouchers([newVoucher, ...vouchers]);
-    setShowCreateModal(false);
-  };
-
-  const handleVoucherAction = (action) => {
-    if (action === 'cancel') {
-      setVouchers(vouchers.filter(v => v.id !== selectedVoucher.id));
-      setToastMsg('Đã hủy phiếu.');
-      setSelectedVoucher(null);
-    } else if (action === 'confirm') {
-      setConfirmAction('confirm');
+  const loadVouchers = async () => {
+    setLoadingList(true);
+    try {
+      const page = await exportApi.list({ page: 0, size: 100, sort: 'createdAt,desc' });
+      setVouchers(page?.content || []);
+    } catch (e) {
+      notify(e?.message || 'Không tải được danh sách phiếu xuất.', 'error');
+    } finally {
+      setLoadingList(false);
     }
   };
 
-  const executeConfirm = () => {
-    setVouchers(vouchers.map(v => v.id === selectedVoucher.id ? { ...v, status: 'Hoàn tất' } : v));
-    setToastMsg('Đã xác nhận xuất kho.');
-    setConfirmAction(null);
-    setSelectedVoucher(null);
+  useEffect(() => {
+    if (isMounted.current) return;
+    isMounted.current = true;
+    loadVouchers();
+  }, []);
+
+  const filteredVouchers = vouchers.filter(v =>
+    (v.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    String(v.id ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (v.partner || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSaveNew = async (payload) => {
+    const created = await exportApi.create(payload);
+    setShowCreateModal(false);
+    await loadVouchers();
+    notify('Đã tạo phiếu xuất nháp.');
+    return created;
+  };
+
+  const handleVoucherAction = (action) => {
+    if (action === 'cancel' || action === 'confirm') setConfirmAction(action);
+  };
+
+  const executeAction = async () => {
+    try {
+      if (confirmAction === 'cancel') {
+        await exportApi.cancel(selectedVoucher.id);
+        notify('Đã hủy phiếu xuất.');
+      } else if (confirmAction === 'confirm') {
+        await exportApi.complete(selectedVoucher.id);
+        notify('Đã xác nhận xuất kho.');
+      }
+      setConfirmAction(null);
+      setSelectedVoucher(null);
+      await loadVouchers();
+    } catch (e) {
+      notify(e?.message || 'Thao tác thất bại.', 'error');
+    }
   };
 
   return (
@@ -544,16 +820,18 @@ export function ExportPage() {
         <table style={s.table}>
           <thead><tr><th style={s.th}>MÃ PHIẾU</th><th style={s.th}>ĐỐI TÁC</th><th style={s.th}>NGÀY TẠO</th><th style={s.th}>TỔNG SL</th><th style={s.th}>TRẠNG THÁI</th><th style={s.th}></th></tr></thead>
           <tbody>
-            {filteredVouchers.length === 0 ? (
+            {loadingList ? (
+              <tr><td colSpan="6" style={s.emptyTd}>Đang tải dữ liệu...</td></tr>
+            ) : filteredVouchers.length === 0 ? (
               <tr><td colSpan="6" style={s.emptyTd}>Không tìm thấy phiếu xuất nào phù hợp.</td></tr>
             ) : (
               filteredVouchers.map((row) => (
                 <tr key={row.id}>
-                  <td style={s.td}><span style={s.codeText}>{row.id}</span></td>
-                  <td style={s.td}>{row.partner}</td>
-                  <td style={s.td}>{row.date}</td>
-                  <td style={s.td}>{row.qty}</td>
-                  <td style={s.td}><span style={row.status === 'Hoàn tất' ? s.badgeSuccess : s.badgePending}>{row.status}</span></td>
+                  <td style={s.td}><span style={s.codeText}>{row.code || row.id}</span></td>
+                  <td style={s.td}>{row.partner || '—'}</td>
+                  <td style={s.td}>{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : (row.date || '—')}</td>
+                  <td style={s.td}>{row.totalQuantity ?? row.qty ?? 0}</td>
+                  <td style={s.td}><span style={getVoucherStatusStyle(row.status)}>{getVoucherStatusLabel(row.status)}</span></td>
                   <td style={s.td}><button style={s.btnAction} onClick={() => setSelectedVoucher(row)}>Chi tiết</button></td>
                 </tr>
               ))
@@ -571,20 +849,33 @@ export function ExportPage() {
         />
       )}
 
-      {confirmAction === 'confirm' && (
+      {confirmAction && (
         <div style={{ ...s.modalOverlay, zIndex: 100 }}>
           <div style={s.confirmBox}>
-            <h3 style={s.confirmTitle}>Xác nhận xuất kho</h3>
-            <p style={s.confirmText}>Bạn có chắc chắn muốn hoàn tất phiếu xuất <strong>{selectedVoucher?.id}</strong>? Thao tác này sẽ làm thay đổi tồn kho.</p>
+            <h3 style={s.confirmTitle}>
+              {confirmAction === 'confirm' ? 'Xác nhận xuất kho' : 'Hủy phiếu xuất'}
+            </h3>
+            <p style={s.confirmText}>
+              {confirmAction === 'confirm'
+                ? <>Bạn có chắc chắn muốn hoàn tất phiếu xuất <strong>{selectedVoucher?.code || selectedVoucher?.id}</strong>? Thao tác này sẽ làm thay đổi tồn kho.</>
+                : <>Bạn có chắc muốn hủy phiếu <strong>{selectedVoucher?.code || selectedVoucher?.id}</strong>?</>}
+            </p>
             <div style={s.confirmActions}>
-              <button onClick={() => setConfirmAction(null)} style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Hủy</button>
-              <button onClick={executeConfirm} style={{ padding: '10px 24px', borderRadius: '8px', border: 'none', backgroundColor: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: '500' }}>Đồng ý</button>
+              <button onClick={() => setConfirmAction(null)} style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Không</button>
+              <button
+                onClick={executeAction}
+                style={{
+                  padding: '10px 24px', borderRadius: '8px', border: 'none',
+                  backgroundColor: confirmAction === 'confirm' ? '#2563eb' : '#e11d48',
+                  color: '#fff', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Đồng ý
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {toastMsg && <CustomToast message={toastMsg} onClose={() => setToastMsg('')} />}
     </div>
   );
 }
@@ -637,7 +928,6 @@ export function QrScanPage() {
   
   const isProcessingScanRef = useRef(false);
 
-  // Hàm làm sạch mã (loại bỏ tiền tố "QR-")
   const sanitizeCode = (code) => {
     if (!code) return '';
     let clean = code.trim();
@@ -650,7 +940,6 @@ export function QrScanPage() {
   const executeSearch = async (code) => {
     if (!code || !code.trim()) return;
     
-    // LÀM SẠCH MÃ TRƯỚC KHI TÌM KIẾM
     const cleanCode = sanitizeCode(code);
     
     setLoading(true);

@@ -44,7 +44,8 @@ export function normalizePage(page = {}) {
 }
 
 export async function request(path, options = {}) {
-  const { query, headers, ...fetchOptions } = options
+  // skipAuthRedirect: khi true, lỗi 401/403 sẽ KHÔNG trigger onUnauthorized/onForbidden
+  const { query, headers, skipAuthRedirect = false, ...fetchOptions } = options
   const token = await accessTokenProvider()
   let response
   try {
@@ -69,8 +70,8 @@ export async function request(path, options = {}) {
     const error = new ApiError(problem, response.status,
       response.status === 401 ? 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.'
         : response.status === 403 ? 'Bạn không có quyền thực hiện thao tác này.' : undefined)
-    if (response.status === 401) authHandlers.onUnauthorized?.(error)
-    if (response.status === 403) authHandlers.onForbidden?.(error)
+    if (response.status === 401 && !skipAuthRedirect) authHandlers.onUnauthorized?.(error)
+    if (response.status === 403 && !skipAuthRedirect) authHandlers.onForbidden?.(error)
     throw error
   }
 

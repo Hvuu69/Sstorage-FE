@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { ROLES } from '../../app/routeConfig.js'
 import { configureAccessTokenProvider, configureHttpAuthHandlers } from '../../shared/api/http.js'
 import { AuthContext, validateCurrentUser } from './authContext.js'
@@ -37,6 +37,13 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
   const [loading, setLoading] = useState(Boolean(authAdapter?.restoreSession))
   const [authorizationError, setAuthorizationError] = useState(null)
 
+  // Sử dụng ref để giữ token/user mới nhất mà không cần cấu hình lại provider
+  const userRef = useRef(currentUser)
+  
+  useEffect(() => {
+    userRef.current = currentUser
+  }, [currentUser])
+
   useEffect(() => {
     let active = true
     if (!authAdapter?.restoreSession) return undefined
@@ -53,7 +60,13 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
     return () => { active = false }
   }, [authAdapter])
 
-  useEffect(() => { configureAccessTokenProvider(() => currentUser?.previewOnly ? null : currentUser?.accessToken ?? null) }, [currentUser])
+  // ✅ SỬA TẠI ĐÂY: Chạy 1 lần duy nhất, đọc từ userRef để luôn lấy token mới nhất
+  useEffect(() => { 
+    configureAccessTokenProvider(() => {
+      if (userRef.current?.previewOnly) return null;
+      return userRef.current?.accessToken ?? null;
+    }) 
+  }, [])
   
   useEffect(() => {
     configureHttpAuthHandlers({ 
@@ -85,5 +98,6 @@ export default function AuthProvider({ children, initialUser = null, authAdapter
       finally { setCurrentUser(null); storeUser(null) }
     },
   }), [authAdapter, authorizationError, currentUser, loading])
+  
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
