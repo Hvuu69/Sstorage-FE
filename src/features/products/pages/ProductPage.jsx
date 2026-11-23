@@ -9,16 +9,6 @@ import { canManageProducts, canViewInternalStock } from '../productPermissions.j
 import { UnifiedScanner } from '../../identification/index.js'
 
 // ==========================================
-// HÀM HỖ TRỢ CACHE
-// ==========================================
-const getCache = (key) => {
-  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch { return null; }
-};
-const setCache = (key, data) => {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch {}
-};
-
-// ==========================================
 // CSS GỘP TRONG CODE
 // ==========================================
 const s = {
@@ -99,7 +89,7 @@ const QrIcon = ({ size = 18 }) => (
 // HELPERS XỬ LÝ STATUS PHIẾU
 // ==========================================
 const getVoucherStatusLabel = (status) => {
-  if (status === 'COMPLETED' || status === 'Hoàn tất') return 'Hoàn tất';
+  if (status === 'COMPLETED' || status === 'CONFIRMED' || status === 'Hoàn tất') return 'Hoàn tất';
   if (status === 'CANCELLED' || status === 'Đã hủy') return 'Đã hủy';
   return 'Nháp';
 };
@@ -110,27 +100,56 @@ const getVoucherStatusStyle = (status) => {
   return s.badgePending;
 };
 const isDraftVoucher = (status) => {
-  return status !== 'COMPLETED' && status !== 'CANCELLED' && status !== 'Hoàn tất' && status !== 'Đã hủy';
+  return status !== 'COMPLETED' && status !== 'CONFIRMED' && status !== 'CANCELLED' && status !== 'Hoàn tất' && status !== 'Đã hủy';
 };
 
 // ==========================================
 // MODAL CHI TIẾT SẢN PHẨM
 // ==========================================
-function ProductDetailModal({ product, onClose, showStock }) {
+function SupplierBadges({ suppliers = [] }) {
+  if (!suppliers.length) return <span style={{ color: '#6b7280' }}>Chưa gán nhà cung cấp</span>;
+  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+    {suppliers.map((supplier) => {
+      const active = supplier.supplierStatus === 'ACTIVE' && supplier.linkStatus === 'ACTIVE';
+      return <span key={supplier.id} title={`${supplier.supplierCode} · NCC: ${supplier.supplierStatus} · Liên kết: ${supplier.linkStatus}`}
+        style={{ padding: '4px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: 500,
+          backgroundColor: active ? '#ecfdf5' : '#f3f4f6', color: active ? '#047857' : '#6b7280',
+          border: `1px solid ${active ? '#a7f3d0' : '#d1d5db'}` }}>
+        {supplier.name}{active ? '' : ' · Ngừng liên kết'}
+      </span>;
+    })}
+  </div>;
+}
+
+export function ProductDetailModal({ product, onClose, showStock, canManage = false, categories = [], units = [], suppliers = [], supplierLoading = false, supplierError = '', onUpdated }) {
+  const [editing, setEditing] = useState(false);
+  const [currentProduct, setCurrentProduct] = useState(product);
+  useEffect(() => { setCurrentProduct(product); setEditing(false); }, [product]);
   if (!product) return null;
+  if (editing) return (
+    <div style={s.modalOverlay}>
+      <div style={{ ...s.modalContent, maxWidth: '700px' }}>
+        <div style={s.modalHeader}><h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Chỉnh sửa sản phẩm</h3><button onClick={() => setEditing(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button></div>
+        <ProductForm entity={currentProduct} categories={categories} units={units} suppliers={suppliers} supplierLoading={supplierLoading} supplierError={supplierError}
+          onClose={() => setEditing(false)} onSaved={async (updated) => { setCurrentProduct(updated); onUpdated?.(updated); }} />
+      </div>
+    </div>
+  );
   return (
     <div style={s.modalOverlay}>
       <div style={{ ...s.modalContent, maxWidth: '600px' }}>
         <div style={s.modalHeader}><h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Chi tiết sản phẩm</h3><button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button></div>
         <div style={{ ...s.modalBody, display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-          <div style={s.detailItem}><span style={s.detailLabel}>SKU</span><span style={{ ...s.detailValue, color: '#2563eb' }}>{product.sku}</span></div>
-          <div style={s.detailItem}><span style={s.detailLabel}>Trạng thái</span><StatusBadge status={product.status} labels={{ ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng' }} /></div>
-          <div style={{ ...s.detailItem, gridColumn: 'span 2' }}><span style={s.detailLabel}>Tên sản phẩm</span><span style={s.detailValue}>{product.name}</span></div>
-          <div style={s.detailItem}><span style={s.detailLabel}>Danh mục</span><span style={s.detailValue}>{product.categoryName}</span></div>
-          <div style={s.detailItem}><span style={s.detailLabel}>Đơn vị</span><span style={s.detailValue}>{product.unitSymbol}</span></div>
-          {showStock && (<div style={s.detailItem}><span style={s.detailLabel}>Tồn kho</span><span style={{ ...s.detailValue, fontSize: '18px', color: '#059669' }}>{product.quantityOnHand ?? '—'}</span></div>)}
+          <div style={s.detailItem}><span style={s.detailLabel}>SKU</span><span style={{ ...s.detailValue, color: '#2563eb' }}>{currentProduct.sku}</span></div>
+          <div style={s.detailItem}><span style={s.detailLabel}>Trạng thái</span><StatusBadge status={currentProduct.status} labels={{ ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng' }} /></div>
+          <div style={{ ...s.detailItem, gridColumn: 'span 2' }}><span style={s.detailLabel}>Tên sản phẩm</span><span style={s.detailValue}>{currentProduct.name}</span></div>
+          <div style={s.detailItem}><span style={s.detailLabel}>Danh mục</span><span style={s.detailValue}>{currentProduct.categoryName}</span></div>
+          <div style={s.detailItem}><span style={s.detailLabel}>Đơn vị</span><span style={s.detailValue}>{currentProduct.unitName} ({currentProduct.unitSymbol})</span></div>
+          <div style={{ ...s.detailItem, gridColumn: 'span 2' }}><span style={s.detailLabel}>Mô tả</span><span style={s.detailValue}>{currentProduct.description || 'Không có mô tả'}</span></div>
+          <div style={{ ...s.detailItem, gridColumn: 'span 2' }}><span style={s.detailLabel}>Nhà cung cấp</span><SupplierBadges suppliers={currentProduct.suppliers} /></div>
+          {showStock && (<div style={s.detailItem}><span style={s.detailLabel}>Tồn kho</span><span style={{ ...s.detailValue, fontSize: '18px', color: '#059669' }}>{currentProduct.quantityOnHand ?? '—'}</span></div>)}
         </div>
-        <div style={s.modalFooter}><button onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Đóng</button></div>
+        <div style={s.modalFooter}>{canManage && <button onClick={() => setEditing(true)} style={s.btnPrimary}>Chỉnh sửa</button>}<button onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Đóng</button></div>
       </div>
     </div>
   );
@@ -139,17 +158,26 @@ function ProductDetailModal({ product, onClose, showStock }) {
 // ==========================================
 // MODAL XEM CHI TIẾT PHIẾU NHẬP/XUẤT
 // ==========================================
-function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = false, onVoucherUpdated }) {
+export function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = false, onVoucherUpdated }) {
   const { notify } = useToast();
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const scanningRef = useRef(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftItems, setDraftItems] = useState(voucher.items || voucher.lines || []);
   const isDraft = isDraftVoucher(voucher.status);
   const statusLabel = getVoucherStatusLabel(voucher.status);
-  const totalQty = voucher.totalQuantity ?? voucher.qty ?? 0;
-  const items = voucher.items || voucher.lines || [];
+  const items = allowScan && isDraft ? draftItems : (voucher.items || voucher.lines || []);
+  const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const formatDateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+
+  useEffect(() => {
+    setDraftItems(voucher.items || voucher.lines || []);
+  }, [voucher]);
 
   const handleProductDetected = async (product) => {
-    if (scanning) return;
+    if (scanningRef.current) return;
+    scanningRef.current = true;
     setScanning(true);
     try {
       const updated = await importApi.scan(voucher.id, product.identifierValue);
@@ -159,13 +187,36 @@ function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = fa
       notify(error?.message || 'Không thể thêm sản phẩm từ mã vừa quét.', 'error');
       throw error;
     } finally {
+      scanningRef.current = false;
       setScanning(false);
+    }
+  };
+
+  const updateDraftQuantity = (productId, value) => {
+    setDraftItems(current => current.map(item => item.productId === productId ? { ...item, quantity: value } : item));
+  };
+
+  const saveDraftLines = async () => {
+    const lines = draftItems.map(item => ({ productId: item.productId, quantity: Number(item.quantity) }));
+    if (lines.length === 0 || lines.some(line => !Number.isSafeInteger(line.quantity) || line.quantity <= 0)) {
+      notify('Phiếu nhập phải có ít nhất một sản phẩm và số lượng phải là số nguyên dương.', 'error');
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      const updated = await importApi.update(voucher.id, { supplierId: voucher.supplierId, note: voucher.note || '', lines });
+      onVoucherUpdated?.(updated);
+      notify('Đã cập nhật phiếu nhập nháp.');
+    } catch (error) {
+      notify(error?.message || 'Không thể cập nhật phiếu nhập.', 'error');
+    } finally {
+      setSavingDraft(false);
     }
   };
 
   return (
     <div style={s.modalOverlay}>
-      <div style={{ ...s.modalContent, maxWidth: '600px' }}>
+      <div style={{ ...s.modalContent, maxWidth: '760px' }}>
         <div style={s.modalHeader}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Chi tiết {voucher.code || voucher.id}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
@@ -198,35 +249,47 @@ function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = fa
             </section>
           )}
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div style={s.detailItem}><span style={s.detailLabel}>Đối tác</span><span style={s.detailValue}>{voucher.partner || '—'}</span></div>
-            <div style={s.detailItem}>
-              <span style={s.detailLabel}>Ngày tạo</span>
-              <span style={s.detailValue}>
-                {voucher.createdAt
-                  ? new Date(voucher.createdAt).toLocaleString('vi-VN')
-                  : (voucher.date || '—')}
-              </span>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+            <div style={s.detailItem}><span style={s.detailLabel}>Mã phiếu</span><span style={s.detailValue}>{voucher.code || voucher.id}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Nhà cung cấp</span><span style={s.detailValue}>{voucher.supplierCode ? `${voucher.supplierCode} · ` : ''}{voucher.partner || '—'}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Người tạo</span><span style={s.detailValue}>{voucher.createdByName || '—'}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Ngày tạo</span><span style={s.detailValue}>{formatDateTime(voucher.createdAt || voucher.date)}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Cập nhật gần nhất</span><span style={s.detailValue}>{formatDateTime(voucher.updatedAt)}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Người xác nhận</span><span style={s.detailValue}>{voucher.confirmedByName || '—'}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Thời điểm xác nhận</span><span style={s.detailValue}>{formatDateTime(voucher.confirmedAt)}</span></div>
+            <div style={s.detailItem}><span style={s.detailLabel}>Số mặt hàng / Tổng số lượng</span><span style={s.detailValue}>{items.length} / {totalQty}</span></div>
           </div>
 
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={s.detailItem}>
+            <span style={s.detailLabel}>Ghi chú</span>
+            <span style={{ ...s.detailValue, whiteSpace: 'pre-wrap' }}>{voucher.note || 'Không có ghi chú'}</span>
+          </div>
+
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflowX: 'auto' }}>
             <table style={s.table}>
-              <thead style={{ backgroundColor: '#f9fafb' }}><tr><th style={{ ...s.th, textTransform: 'none' }}>Sản phẩm</th><th style={{ ...s.th, textTransform: 'none', textAlign: 'right' }}>Số lượng</th></tr></thead>
+              <thead style={{ backgroundColor: '#f9fafb' }}><tr><th style={{ ...s.th, width: '54px', textTransform: 'none' }}>STT</th><th style={{ ...s.th, textTransform: 'none' }}>Sản phẩm</th><th style={{ ...s.th, textTransform: 'none' }}>Đơn vị</th><th style={{ ...s.th, textTransform: 'none', textAlign: 'right' }}>Số lượng</th></tr></thead>
               <tbody>
                 {items.length > 0 ? items.map((item, idx) => (
                   <tr key={item.id ?? idx}>
+                    <td style={s.td}>{idx + 1}</td>
                     <td style={s.td}>
                       <strong>{item.name || item.productName || '—'}</strong>
                       <br/>
                       <span style={{ fontSize: '12px', color: '#6b7280' }}>{item.sku || item.productSku || ''}</span>
                     </td>
+                    <td style={s.td}>{item.unit || item.unitSymbol || '—'}</td>
                     <td style={{ ...s.td, textAlign: 'right' }}>
-                      <strong>{item.quantity}</strong> {item.unit || item.unitSymbol || ''}
+                      {allowScan && isDraft ? <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+                        <input type="number" min="1" step="1" value={item.quantity}
+                          onChange={(event) => updateDraftQuantity(item.productId, event.target.value)}
+                          aria-label={`Số lượng ${item.sku}`} style={{ ...s.prodInput, width: '90px', padding: '8px' }} />
+                        <button type="button" onClick={() => setDraftItems(current => current.filter(line => line.productId !== item.productId))}
+                          style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer' }}>Xóa</button>
+                      </div> : <strong>{item.quantity}</strong>}
                     </td>
                   </tr>
                 )) : (
-                  <tr><td colSpan="2" style={s.td}>Không có sản phẩm.</td></tr>
+                  <tr><td colSpan="4" style={s.td}>Không có sản phẩm.</td></tr>
                 )}
               </tbody>
             </table>
@@ -236,6 +299,7 @@ function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = fa
         <div style={s.modalFooter}>
           {isDraft ? (
             <>
+              {allowScan && <button onClick={saveDraftLines} disabled={savingDraft} style={{ ...s.btnPrimary, backgroundColor: '#0f766e' }}>{savingDraft ? 'Đang lưu…' : 'Lưu thay đổi'}</button>}
               <button onClick={() => onRequestConfirm('cancel')} style={{ padding: '10px 16px', borderRadius: '8px', border: 'none', backgroundColor: '#e11d48', color: '#fff', cursor: 'pointer', fontWeight: '500' }}>Hủy phiếu</button>
               <button onClick={() => onRequestConfirm('confirm')} style={{ ...s.btnPrimary }}>Xác nhận</button>
             </>
@@ -251,39 +315,59 @@ function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = fa
 // ==========================================
 // FORM THÊM/SỬA SẢN PHẨM
 // ==========================================
-export function ProductForm({ entity, categories, units, onClose, onSaved }) {
+export function ProductForm({ entity, categories, units, suppliers = [], supplierLoading = false, supplierError = '', onClose, onSaved }) {
   const { notify } = useToast()
   const safeCategories = Array.isArray(categories) ? categories : [];
   const safeUnits = Array.isArray(units) ? units : [];
   
   const selectableCategories = safeCategories.filter((item) => item.active || item.id === entity?.categoryId)
-  const [form, setForm] = useState({ sku: entity?.sku ?? '', name: entity?.name ?? '', description: entity?.description ?? '', categoryId: entity?.categoryId ?? selectableCategories[0]?.id ?? '', unitId: entity?.unitId ?? safeUnits[0]?.id ?? '' })
+  const activeSupplierIds = entity?.suppliers?.filter(item => item.linkStatus === 'ACTIVE').map(item => item.id) ?? [];
+  const [form, setForm] = useState({ sku: entity?.sku ?? '', name: entity?.name ?? '', description: entity?.description ?? '', categoryId: entity?.categoryId ?? selectableCategories[0]?.id ?? '', unitId: entity?.unitId ?? safeUnits[0]?.id ?? '', supplierIds: activeSupplierIds })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const update = (field) => (event) => setForm((value) => ({ ...value, [field]: event.target.value }))
+  const toggleSupplier = (supplierId) => setForm(value => ({ ...value, supplierIds: value.supplierIds.includes(supplierId)
+    ? value.supplierIds.filter(id => id !== supplierId) : [...value.supplierIds, supplierId] }))
   
   async function submit(event) {
     event.preventDefault(); setErrors({})
     if (!form.categoryId || !form.unitId) { setErrors({ categoryId: !form.categoryId ? 'Hãy chọn danh mục.' : '', unitId: !form.unitId ? 'Hãy chọn đơn vị.' : '' }); return }
     setSaving(true)
     try {
-      if (entity) await productApi.update(entity.id, form)
-      else await productApi.create(form)
+      const saved = entity ? await productApi.update(entity.id, form) : await productApi.create(form)
       notify(entity ? 'Đã cập nhật sản phẩm.' : 'Đã tạo sản phẩm.')
-      await onSaved(); onClose()
+      await onSaved(saved); onClose()
     } catch (error) { setErrors(error.fieldErrors ?? {}); notify(error.message, 'error') }
     finally { setSaving(false) }
   }
 
   return (
-    <form onSubmit={submit}>
-      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={s.prodInputGroup}><label style={s.prodLabel}>SKU *</label><input required maxLength="60" value={form.sku} onChange={update('sku')} style={s.prodInput} /></div>
+    <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', minHeight: 0 }}>
+        <div style={s.prodInputGroup}><label style={s.prodLabel}>SKU *</label><input required maxLength="60" value={form.sku} onChange={update('sku')} style={s.prodInput} />{entity && <span style={{ fontSize: '12px', color: '#6b7280' }}>SKU chỉ đổi được khi sản phẩm chưa có dữ liệu nghiệp vụ liên quan.</span>}</div>
         <div style={s.prodInputGroup}><label style={s.prodLabel}>Tên sản phẩm *</label><input required maxLength="200" value={form.name} onChange={update('name')} style={s.prodInput} /></div>
         <div style={s.prodInputGroup}><label style={s.prodLabel}>Danh mục *</label><select required value={form.categoryId} onChange={update('categoryId')} style={s.prodInput}><option value="">Chọn danh mục</option>{selectableCategories.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></div>
         <div style={s.prodInputGroup}><label style={s.prodLabel}>Đơn vị chuẩn *</label><select required value={form.unitId} onChange={update('unitId')} style={s.prodInput}><option value="">Chọn đơn vị</option>{safeUnits.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name} ({item.symbol})</option>)}</select></div>
+        <div style={s.prodInputGroup}>
+          <label style={s.prodLabel}>Nhà cung cấp</label>
+          <span style={{ fontSize: '12px', color: '#6b7280' }}>Có thể chọn nhiều nhà cung cấp; bỏ chọn sẽ ngừng liên kết, không xóa lịch sử.</span>
+          <div style={{ border: '1px solid #d1d5db', borderRadius: '8px', maxHeight: '190px', overflowY: 'auto' }}>
+            {supplierLoading ? <div style={{ padding: '12px', color: '#6b7280' }}>Đang tải nhà cung cấp...</div> : supplierError ? <div style={{ padding: '12px', color: '#dc2626' }}>{supplierError}</div> : suppliers.filter(item => item.status === 'ACTIVE').length === 0 ? <div style={{ padding: '12px', color: '#6b7280' }}>Không có nhà cung cấp đang hoạt động.</div> : suppliers.filter(item => item.status === 'ACTIVE').map(supplier => (
+              <label key={supplier.id} style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.supplierIds.includes(supplier.id)} onChange={() => toggleSupplier(supplier.id)} />
+                <span><strong>{supplier.code}</strong> · {supplier.name}</span>
+              </label>
+            ))}
+            {entity?.suppliers?.filter(item => item.supplierStatus === 'INACTIVE' && item.linkStatus === 'ACTIVE').map(supplier => (
+              <label key={supplier.id} style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: '10px', color: '#6b7280' }}>
+                <input type="checkbox" checked={form.supplierIds.includes(supplier.id)} onChange={() => toggleSupplier(supplier.id)} />
+                <span><strong>{supplier.supplierCode}</strong> · {supplier.name} (NCC đã ngừng hoạt động; chỉ có thể bỏ liên kết)</span>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
-      <div style={s.modalFooter}><button type="button" onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button><button type="submit" disabled={saving} style={s.btnPrimary}>{saving ? 'Đang lưu…' : 'Lưu sản phẩm'}</button></div>
+      <div style={s.modalFooter}><button type="button" onClick={onClose} disabled={saving} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: saving ? 'not-allowed' : 'pointer' }}>Hủy</button><button type="submit" disabled={saving || supplierLoading} style={{ ...s.btnPrimary, opacity: saving || supplierLoading ? 0.65 : 1 }}>{saving ? 'Đang lưu…' : entity ? 'Lưu thay đổi' : 'Thêm sản phẩm'}</button></div>
     </form>
   )
 }
@@ -291,15 +375,13 @@ export function ProductForm({ entity, categories, units, onClose, onSaved }) {
 // ==========================================
 // MODAL TẠO PHIẾU NHẬP KHO (CÓ TÌM KIẾM NCC)
 // ==========================================
-function CreateImportModal({ onClose, onSave }) {
+export function CreateImportModal({ onClose, onSave }) {
   const { notify } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [quantities, setQuantities] = useState({});
   
   const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState('');
-  const [isAddingSupplier, setIsAddingSupplier] = useState(false);
-  const [newSupplierName, setNewSupplierName] = useState('');
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   
   // ✅ State cho phần tìm kiếm nhà cung cấp
@@ -308,25 +390,37 @@ function CreateImportModal({ onClose, onSave }) {
   const dropdownRef = useRef(null);
 
   const [products, setProducts] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productError, setProductError] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [productPage, setProductPage] = useState(0);
+  const [productTotalPages, setProductTotalPages] = useState(0);
 
   useEffect(() => {
-    Promise.all([
-      productApi.list({ page: 0, size: 100, status: 'ACTIVE' }),
-      supplierApi.list()
-    ])
-      .then(([prodRes, supRes]) => {
-        setProducts(prodRes?.content || []);
-        const supList = supRes || [];
-        setSuppliers(supList);
-        if (supList.length > 0) setSelectedSupplier(supList[0].name);
-      })
-      .catch(err => notify(err.message || 'Lỗi tải dữ liệu', 'error'))
-      .finally(() => {
-        setLoadingProducts(false);
-        setLoadingSuppliers(false);
-      });
+    supplierApi.listActive({ page: 0, size: 100, sort: 'name,asc' })
+      .then((response) => setSuppliers(response.content || []))
+      .catch(err => notify(err.message || 'Không tải được nhà cung cấp đang hoạt động.', 'error'))
+      .finally(() => setLoadingSuppliers(false));
   }, []);
+
+  useEffect(() => {
+    if (!selectedSupplier) {
+      setProducts([]);
+      setProductTotalPages(0);
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingProducts(true);
+    setProductError('');
+    supplierApi.products(selectedSupplier, { search: productSearch.trim() || undefined, page: productPage, size: 10, sort: 'product.name,asc' }, { signal: controller.signal })
+      .then((response) => {
+        setProducts(response.content || []);
+        setProductTotalPages(response.totalPages || 0);
+      })
+      .catch((error) => { if (error?.errorCode !== 'REQUEST_ABORTED') setProductError(error.message); })
+      .finally(() => setLoadingProducts(false));
+    return () => controller.abort();
+  }, [selectedSupplier, productSearch, productPage]);
 
   // ✅ Click ra ngoài để đóng dropdown
   useEffect(() => {
@@ -341,18 +435,15 @@ function CreateImportModal({ onClose, onSave }) {
 
   const handleQtyChange = (id, val) => setQuantities(prev => ({ ...prev, [id]: val }));
 
-  const handleAddSupplier = async () => {
-    if (!newSupplierName.trim()) return;
-    try {
-      const newSup = await supplierApi.create(newSupplierName.trim());
-      setSuppliers(prev => [...prev, newSup]);
-      setSelectedSupplier(newSup.name);
-      setIsAddingSupplier(false);
-      setNewSupplierName('');
-      notify('Đã thêm nhà cung cấp mới.');
-    } catch (err) {
-      notify('Lỗi khi thêm nhà cung cấp.', 'error');
-    }
+  const chooseSupplier = (supplier) => {
+    const hasLines = Object.values(quantities).some(value => Number(value) > 0);
+    if (selectedSupplier && selectedSupplier !== supplier.id && hasLines &&
+        !globalThis.confirm('Đổi nhà cung cấp sẽ xóa toàn bộ sản phẩm đã chọn. Bạn có muốn tiếp tục?')) return;
+    if (selectedSupplier !== supplier.id) setQuantities({});
+    setSelectedSupplier(supplier.id);
+    setProductSearch('');
+    setProductPage(0);
+    setIsSupplierDropdownOpen(false);
   };
 
   const handleSave = async () => {
@@ -361,9 +452,9 @@ function CreateImportModal({ onClose, onSave }) {
       return;
     }
 
-    const selectedItems = products
-      .filter(p => Number(quantities[p.id]) > 0)
-      .map(p => ({ productId: p.id, quantity: Number(quantities[p.id]) }));
+    const selectedItems = Object.entries(quantities)
+      .filter(([, quantity]) => Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0)
+      .map(([productId, quantity]) => ({ productId, quantity: Number(quantity) }));
 
     if (selectedItems.length === 0) {
       notify('Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.', 'error');
@@ -374,7 +465,7 @@ function CreateImportModal({ onClose, onSave }) {
     try {
       // ✅ Gửi đúng cấu trúc Backend yêu cầu
       await onSave({
-        partnerName: selectedSupplier,
+        supplierId: selectedSupplier,
         note: '',
         lines: selectedItems,
       });
@@ -387,8 +478,10 @@ function CreateImportModal({ onClose, onSave }) {
 
   // Lọc danh sách nhà cung cấp theo từ khóa tìm kiếm
   const filteredSuppliers = suppliers.filter(sup => 
-    sup.name.toLowerCase().includes(searchSupplier.toLowerCase())
+    sup.name.toLowerCase().includes(searchSupplier.toLowerCase()) ||
+    (sup.code || '').toLowerCase().includes(searchSupplier.toLowerCase())
   );
+  const selectedSupplierInfo = suppliers.find(supplier => supplier.id === selectedSupplier);
 
   return (
     <div style={s.modalOverlay} onClick={onClose}>
@@ -401,40 +494,15 @@ function CreateImportModal({ onClose, onSave }) {
         <div style={s.modalBody}>
           {/* PHẦN NHÀ CUNG CẤP CÓ TÌM KIẾM */}
           <div style={s.prodInputGroup} ref={dropdownRef}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              <label style={s.prodLabel}>Nhà cung cấp *</label>
-              {!isAddingSupplier && (
-                <button 
-                  onClick={() => setIsAddingSupplier(true)} 
-                  style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '13px', fontWeight: '500', padding: 0 }}
-                >
-                  + Thêm nhà cung cấp mới
-                </button>
-              )}
-            </div>
-            
-            {isAddingSupplier ? (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input 
-                  type="text" 
-                  placeholder="Nhập tên nhà cung cấp mới..." 
-                  style={{ ...s.prodInput, flex: 1 }} 
-                  value={newSupplierName} 
-                  onChange={(e) => setNewSupplierName(e.target.value)} 
-                  autoFocus
-                />
-                <button onClick={handleAddSupplier} style={{ ...s.btnPrimary, backgroundColor: '#10b981', padding: '0 16px' }}>Lưu</button>
-                <button onClick={() => setIsAddingSupplier(false)} style={{ padding: '0 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button>
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
+            <label style={s.prodLabel}>Nhà cung cấp *</label>
+            <div style={{ position: 'relative' }}>
                 {/* Ô hiển thị nhà cung cấp đã chọn */}
                 <div 
                   onClick={() => { setIsSupplierDropdownOpen(!isSupplierDropdownOpen); setSearchSupplier(''); }}
                   style={{ ...s.prodInput, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
                   <span style={{ color: selectedSupplier ? '#111827' : '#9ca3af' }}>
-                    {loadingSuppliers ? 'Đang tải nhà cung cấp...' : (selectedSupplier || 'Chọn nhà cung cấp...')}
+                    {loadingSuppliers ? 'Đang tải nhà cung cấp...' : selectedSupplierInfo ? `${selectedSupplierInfo.code} · ${selectedSupplierInfo.name}` : 'Chọn nhà cung cấp...'}
                   </span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>
@@ -462,12 +530,10 @@ function CreateImportModal({ onClose, onSave }) {
                         filteredSuppliers.map((sup) => (
                           <div 
                             key={sup.id || sup.name}
-                            onClick={() => { setSelectedSupplier(sup.name); setIsSupplierDropdownOpen(false); }}
-                            style={{ padding: '10px 12px', cursor: 'pointer', fontSize: '14px', backgroundColor: selectedSupplier === sup.name ? '#eff6ff' : '#fff', color: selectedSupplier === sup.name ? '#2563eb' : '#374151', borderBottom: '1px solid #f3f4f6' }}
-                            onMouseEnter={(e) => { if (selectedSupplier !== sup.name) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
-                            onMouseLeave={(e) => { if (selectedSupplier !== sup.name) e.currentTarget.style.backgroundColor = '#fff'; }}
+                            onClick={() => chooseSupplier(sup)}
+                            style={{ padding: '10px 12px', cursor: 'pointer', fontSize: '14px', backgroundColor: selectedSupplier === sup.id ? '#eff6ff' : '#fff', color: selectedSupplier === sup.id ? '#2563eb' : '#374151', borderBottom: '1px solid #f3f4f6' }}
                           >
-                            {sup.name}
+                            <strong>{sup.code}</strong> · {sup.name}
                           </div>
                         ))
                       )}
@@ -475,11 +541,19 @@ function CreateImportModal({ onClose, onSave }) {
                   </div>
                 )}
               </div>
-            )}
           </div>
 
           {/* KHUNG CHỨA BẢNG SẢN PHẨM (Dùng Grid để không bao giờ tràn) */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+            {selectedSupplier && <div style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
+              <input
+                value={productSearch}
+                onChange={(event) => { setProductSearch(event.target.value); setProductPage(0); }}
+                placeholder="Tìm theo SKU hoặc tên sản phẩm..."
+                style={s.prodInput}
+                aria-label="Tìm sản phẩm của nhà cung cấp"
+              />
+            </div>}
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
               {/* Header của bảng */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '12px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
@@ -488,24 +562,30 @@ function CreateImportModal({ onClose, onSave }) {
               </div>
               
               {/* Danh sách sản phẩm */}
-              {loadingProducts ? (
+              {!selectedSupplier ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Vui lòng chọn nhà cung cấp trước</div>
+              ) : loadingProducts ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Đang tải danh sách sản phẩm...</div>
+              ) : productError ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#dc2626' }}>{productError}</div>
               ) : products.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Không có sản phẩm nào.</div>
+                <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Nhà cung cấp chưa có sản phẩm phù hợp.</div>
               ) : (
                 products.map(p => (
-                  <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '16px', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
+                  <div key={p.productId} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '16px', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
                     <div style={{ wordBreak: 'break-word' }}>
-                      <strong style={{ fontSize: '14px' }}>{p.name}</strong>
-                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{p.sku}</div>
+                      <strong style={{ fontSize: '14px' }}>{p.productName}</strong>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{p.sku} · {p.unit || '—'}</div>
+                      {p.identifierValue && <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>{p.identifierType}: {p.identifierValue}</div>}
                     </div>
                     <div>
                       <input 
                         type="number" 
-                        min="0" 
-                        placeholder="0" 
-                        value={quantities[p.id] || ''} 
-                        onChange={(e) => handleQtyChange(p.id, e.target.value)} 
+                        min="1"
+                        step="1"
+                        placeholder="SL"
+                        value={quantities[p.productId] || ''}
+                        onChange={(e) => handleQtyChange(p.productId, e.target.value)}
                         style={{ ...s.prodInput, textAlign: 'center', padding: '8px', backgroundColor: '#f9fafb' }} 
                       />
                     </div>
@@ -513,12 +593,17 @@ function CreateImportModal({ onClose, onSave }) {
                 ))
               )}
             </div>
+            {selectedSupplier && productTotalPages > 1 && <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #e5e7eb' }}>
+              <button type="button" disabled={productPage === 0 || loadingProducts} onClick={() => setProductPage(page => page - 1)} style={s.btnPage}>Trước</button>
+              <span style={{ fontSize: '13px', color: '#6b7280' }}>Trang {productPage + 1}/{productTotalPages}</span>
+              <button type="button" disabled={productPage + 1 >= productTotalPages || loadingProducts} onClick={() => setProductPage(page => page + 1)} style={s.btnPage}>Sau</button>
+            </div>}
           </div>
         </div>
 
         <div style={s.modalFooter}>
           <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>Hủy</button>
-          <button onClick={handleSave} disabled={isSaving || loadingProducts} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>
+          <button onClick={handleSave} disabled={isSaving || loadingProducts || !selectedSupplier} style={{ ...s.btnPrimary, backgroundColor: '#8b5cf6', opacity: isSaving ? 0.7 : 1 }}>
             {isSaving ? 'Đang lưu...' : 'Lưu nháp'}
           </button>
         </div>
@@ -1240,14 +1325,16 @@ export default function ProductPage() {
   const showStock = canViewInternalStock(currentUser)
   
   const [query, setQuery] = useState('')
-  const [draft, setDraft] = useState({ categoryId: '', status: '' })
+  const [draft, setDraft] = useState({ categoryId: '', supplierId: '', status: '' })
   const [categories, setCategories] = useState([])
   const [units, setUnits] = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [supplierLoading, setSupplierLoading] = useState(canManage)
+  const [supplierError, setSupplierError] = useState('')
   const [dialog, setDialog] = useState(null)
-  const [appliedFilters, setAppliedFilters] = useState({ search: '', categoryId: '', status: '' })
+  const [appliedFilters, setAppliedFilters] = useState({ search: '', categoryId: '', supplierId: '', status: '' })
   const [uiPage, setUiPage] = useState(0);
   const [hoveredBtn, setHoveredBtn] = useState(null);
-  const [cachedData, setCachedData] = useState(() => getCache('cached_products_data'));
 
   const list = usePagedResource(productApi.list, { filters: appliedFilters })
   const { notify } = useToast()
@@ -1257,6 +1344,10 @@ export default function ProductPage() {
     Promise.all([categoryApi.list({ page: 0, size: 100, sort: 'name,asc' }), unitApi.list({ page: 0, size: 100, sort: 'name,asc' })])
       .then(([categoryPage, unitPage]) => { if (active) { setCategories(categoryPage?.content || []); setUnits(unitPage?.content || []) } })
       .catch((error) => { if (active) notify(error.message, 'error') })
+    if (canManage) supplierApi.list({ page: 0, size: 100, sort: 'name,asc' })
+      .then((supplierPage) => { if (active) setSuppliers(supplierPage?.content || []) })
+      .catch((error) => { if (active) { setSupplierError(error.message || 'Không tải được nhà cung cấp.'); notify(error.message, 'error') } })
+      .finally(() => { if (active) setSupplierLoading(false) })
     return () => { active = false }
   }, [])
 
@@ -1265,17 +1356,10 @@ export default function ProductPage() {
       list.beginChange();
       list.setPage(0);
       setUiPage(0);
-      setAppliedFilters({ search: query.trim(), categoryId: draft.categoryId, status: draft.status });
+      setAppliedFilters({ search: query.trim(), categoryId: draft.categoryId, supplierId: draft.supplierId, status: draft.status });
     }, 200); 
     return () => clearTimeout(timer);
-  }, [query, draft.categoryId, draft.status]);
-
-  useEffect(() => {
-    if (!list.loading && list.result?.content) {
-      setCache('cached_products_data', list.result);
-      setCachedData(list.result);
-    }
-  }, [list.loading, list.result]);
+  }, [query, draft.categoryId, draft.supplierId, draft.status]);
 
   useEffect(() => {
     if (list.result && typeof list.result.number === 'number') {
@@ -1299,7 +1383,7 @@ export default function ProductPage() {
     list.setPage(newPage);
   };
 
-  const displayData = (list.loading && cachedData) ? cachedData : (list.result || cachedData || { content: [], number: 0, totalPages: 1, totalElements: 0 });
+  const displayData = list.result || { content: [], number: 0, totalPages: 1, totalElements: 0 };
   const currentPage = uiPage + 1; 
   const totalPages = (list.result?.totalPages && list.result.totalPages > 0) ? list.result.totalPages : 1;
   const totalElements = list.result?.totalElements || 0;
@@ -1327,6 +1411,17 @@ export default function ProductPage() {
             <select value={draft.categoryId} onChange={(e) => setDraft(v => ({ ...v, categoryId: e.target.value }))} style={s.prodInput}><option value="">Tất cả danh mục</option>{categories?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           </div>
           {currentUser?.role !== 'DEALER' && (
+            canManage && <div style={{ ...s.prodInputGroup, flex: 'none', width: '220px' }}>
+              <label style={s.prodLabel}>Nhà cung cấp</label>
+              <select value={draft.supplierId} disabled={supplierLoading || Boolean(supplierError)} onChange={(e) => setDraft(v => ({ ...v, supplierId: e.target.value }))} style={s.prodInput}>
+                <option value="">Tất cả nhà cung cấp</option>
+                {suppliers.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}{item.status === 'INACTIVE' ? ' (Ngừng)' : ''}</option>)}
+              </select>
+              {supplierLoading && <span style={{ fontSize: '12px', color: '#6b7280' }}>Đang tải...</span>}
+              {supplierError && <span style={{ fontSize: '12px', color: '#dc2626' }}>{supplierError}</span>}
+            </div>
+          )}
+          {currentUser?.role !== 'DEALER' && (
             <div style={{ ...s.prodInputGroup, flex: 'none', width: '200px' }}>
               <label style={s.prodLabel}>Trạng thái</label>
               <select value={draft.status} onChange={(e) => setDraft(v => ({ ...v, status: e.target.value }))} style={s.prodInput}><option value="">Tất cả</option><option value="ACTIVE">Hoạt động</option><option value="INACTIVE">Ngừng</option></select>
@@ -1337,19 +1432,20 @@ export default function ProductPage() {
 
       <div style={{ ...s.card, padding: 0 }}>
         {list.loading && <div style={s.loadingBar}></div>}
-        <div style={{ overflowX: 'auto', opacity: list.loading && !cachedData ? 0.6 : 1 }}>
+        <div style={{ overflowX: 'auto', opacity: list.loading ? 0.6 : 1 }}>
           <table style={s.table}>
-            <thead><tr><th style={s.th}>SKU</th><th style={s.th}>Sản phẩm</th><th style={s.th}>Danh mục</th><th style={s.th}>Đơn vị</th>{showStock && <th style={s.th}>Tồn kho</th>}<th style={s.th}>Trạng thái</th><th style={s.th}>Thao tác</th></tr></thead>
+            <thead><tr><th style={s.th}>SKU</th><th style={s.th}>Sản phẩm</th><th style={s.th}>Danh mục</th><th style={s.th}>Đơn vị</th>{currentUser?.role !== 'DEALER' && <th style={s.th}>Nhà cung cấp</th>}{showStock && <th style={s.th}>Tồn kho</th>}<th style={s.th}>Trạng thái</th><th style={s.th}>Thao tác</th></tr></thead>
             <tbody>
               {!displayData?.content || displayData.content.length === 0 ? (
-                <tr><td colSpan="7" style={s.emptyTd}>{list.loading ? 'Đang tải dữ liệu...' : 'Không tìm thấy sản phẩm nào phù hợp.'}</td></tr>
+                <tr><td colSpan={currentUser?.role === 'DEALER' ? 6 : (showStock ? 8 : 7)} style={s.emptyTd}>{list.loading ? 'Đang tải dữ liệu...' : 'Không tìm thấy sản phẩm nào phù hợp.'}</td></tr>
               ) : (
                 displayData.content.map(item => (
                   <tr key={item.id}>
                     <td style={s.td}><strong>{item.sku}</strong></td><td style={s.td}>{item.name}</td><td style={s.td}>{item.categoryName}</td><td style={s.td}>{item.unitSymbol}</td>
+                    {currentUser?.role !== 'DEALER' && <td style={{ ...s.td, minWidth: '210px' }}><SupplierBadges suppliers={item.suppliers} /></td>}
                     {showStock && <td style={s.td}><span style={{ color: '#2563eb', fontWeight: 'bold' }}>{item.quantityOnHand ?? '—'}</span></td>}
                     <td style={s.td}><StatusBadge status={item.status} labels={{ ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng' }} /></td>
-                    <td style={s.td}><div style={{ display: 'flex', gap: '12px' }}><button style={s.btnAction} onClick={() => openDetail(item)}>Chi tiết</button>{canManage && (<><button style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontWeight: '500', padding: 0 }} onClick={() => setDialog({ type: 'form', entity: item })}>Sửa</button><button style={{ background: 'none', border: 'none', color: item.status === 'ACTIVE' ? '#dc2626' : '#16a34a', cursor: 'pointer', fontWeight: '500', padding: 0 }} onClick={() => setDialog({ type: 'status', entity: item })}>{item.status === 'ACTIVE' ? 'Ngừng' : 'Kích hoạt'}</button></>)}</div></td>
+                    <td style={s.td}><div style={{ display: 'flex', gap: '12px' }}><button style={s.btnAction} onClick={() => openDetail(item)}>Chi tiết</button>{canManage && <button style={{ background: 'none', border: 'none', color: item.status === 'ACTIVE' ? '#dc2626' : '#16a34a', cursor: 'pointer', fontWeight: '500', padding: 0 }} onClick={() => setDialog({ type: 'status', entity: item })}>{item.status === 'ACTIVE' ? 'Ngừng' : 'Kích hoạt'}</button>}</div></td>
                   </tr>
                 ))
               )}
@@ -1357,7 +1453,7 @@ export default function ProductPage() {
           </table>
         </div>
         <div style={s.pagination}>
-          <span style={{ fontSize: '14px', color: '#6b7280' }}>{list.loading && !cachedData ? 'Đang tải...' : `Tổng cộng ${totalElements} sản phẩm - Trang ${currentPage}/${totalPages}`}</span>
+          <span style={{ fontSize: '14px', color: '#6b7280' }}>{list.loading ? 'Đang tải...' : `Tổng cộng ${totalElements} sản phẩm - Trang ${currentPage}/${totalPages}`}</span>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button disabled={list.loading || currentPage <= 1} onClick={() => handlePageChange(uiPage - 1)} style={(list.loading || currentPage <= 1) ? s.btnPageDisabled : { ...s.btnPage, backgroundColor: hoveredBtn === 'prev' ? '#f3f4f6' : '#fff' }} onMouseEnter={() => setHoveredBtn('prev')} onMouseLeave={() => setHoveredBtn(null)}>Trước</button>
             <button disabled={list.loading || currentPage >= totalPages} onClick={() => handlePageChange(uiPage + 1)} style={(list.loading || currentPage >= totalPages) ? s.btnPageDisabled : { ...s.btnPage, backgroundColor: hoveredBtn === 'next' ? '#f3f4f6' : '#fff' }} onMouseEnter={() => setHoveredBtn('next')} onMouseLeave={() => setHoveredBtn(null)}>Sau</button>
@@ -1366,9 +1462,9 @@ export default function ProductPage() {
       </div>
 
       {dialog?.type === 'form' && (
-        <div style={s.modalOverlay}><div style={{ ...s.modalContent, maxWidth: '600px' }}><div style={s.modalHeader}><h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{dialog.entity ? 'Cập nhật' : 'Thêm sản phẩm'}</h3><button onClick={() => setDialog(null)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button></div><ProductForm entity={dialog.entity} categories={categories} units={units} onClose={() => setDialog(null)} onSaved={list.load} /></div></div>
+        <div style={s.modalOverlay}><div style={{ ...s.modalContent, maxWidth: '700px' }}><div style={s.modalHeader}><h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Thêm sản phẩm</h3><button onClick={() => setDialog(null)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button></div><ProductForm categories={categories} units={units} suppliers={suppliers} supplierLoading={supplierLoading} supplierError={supplierError} onClose={() => setDialog(null)} onSaved={list.load} /></div></div>
       )}
-      {dialog?.type === 'detail' && <ProductDetailModal product={dialog.entity} showStock={showStock} onClose={() => setDialog(null)} />}
+      {dialog?.type === 'detail' && <ProductDetailModal product={dialog.entity} showStock={showStock} canManage={canManage} categories={categories} units={units} suppliers={suppliers} supplierLoading={supplierLoading} supplierError={supplierError} onClose={() => setDialog(null)} onUpdated={(updated) => { setDialog(value => ({ ...value, entity: updated })); void list.load(); }} />}
       {dialog?.type === 'status' && <ConfirmDialog dangerous={dialog.entity.status === 'ACTIVE'} message={`Bạn có chắc muốn ${dialog.entity.status === 'ACTIVE' ? 'ngừng hoạt động' : 'kích hoạt'} sản phẩm ${dialog.entity.sku}?`} onClose={() => setDialog(null)} onConfirm={() => changeStatus(dialog.entity)} />}
     </div>
   )

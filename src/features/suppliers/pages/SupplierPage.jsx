@@ -2,49 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { ROLES } from '../../../app/routeConfig.js'
 import { useAuth } from '../../auth/authContext.js'
 import usePagedResource from '../../../shared/hooks/usePagedResource.js'
-
-const getMockData = () => {
-  try { const s = localStorage.getItem('mock_suppliers'); return s ? JSON.parse(s) : null; } catch { return null; }
-};
-const setMockData = (data) => {
-  try { localStorage.setItem('mock_suppliers', JSON.stringify(data)); } catch {}
-};
-
-const initialData = [
-  { id: 1, code: 'NCC-001', name: 'Công ty Thực phẩm An Khang', phone: '0901234567', email: 'contact@ankhang.vn', address: '123 Nguyễn Văn Linh, Q.7, TP.HCM', active: true },
-  { id: 2, code: 'NCC-002', name: 'Nước giải khát Việt Xanh', phone: '0912345678', email: 'sales@vietxanh.vn', address: '456 Lê Lợi, Q.1, TP.HCM', active: true },
-  { id: 3, code: 'NCC-003', name: 'Công ty Bao bì Tân Tiến', phone: '0987654321', email: 'info@tantien.vn', address: '789 Trần Hưng Đạo, Q.5, TP.HCM', active: false },
-];
-
-const supplierApi = {
-  list: async (params = {}) => {
-    const data = getMockData() || initialData;
-    const { search = '' } = params;
-    const filtered = data.filter(item => 
-      item.name.toLowerCase().includes(search.toLowerCase()) || 
-      item.code.toLowerCase().includes(search.toLowerCase())
-    );
-    return { content: filtered, totalElements: filtered.length, totalPages: 1, number: 0 };
-  },
-  create: async (data) => {
-    const currentData = getMockData() || initialData;
-    const newItem = { ...data, id: Date.now(), active: true };
-    setMockData([newItem, ...currentData]);
-    return newItem;
-  },
-  update: async (id, data) => {
-    const currentData = getMockData() || initialData;
-    const updatedData = currentData.map(item => item.id === id ? { ...item, ...data } : item);
-    setMockData(updatedData);
-    return updatedData.find(item => item.id === id);
-  },
-  changeStatus: async (id, active) => {
-    const currentData = getMockData() || initialData;
-    const updatedData = currentData.map(item => item.id === id ? { ...item, active } : item);
-    setMockData(updatedData);
-    return updatedData.find(item => item.id === id);
-  }
-};
+import { supplierApi } from '../api/supplierApi.js'
 
 // ==========================================
 // CSS GỘP TRONG CODE
@@ -160,7 +118,7 @@ function CustomConfirmDialog({ title, message, isDangerous, onConfirm, onClose, 
 // ==========================================
 // FORM THÊM/SỬA NHÀ CUNG CẤP
 // ==========================================
-function SupplierForm({ entity, onClose, onSaved, showToast }) {
+export function SupplierForm({ entity, onClose, onSaved, showToast }) {
   const [form, setForm] = useState({ 
     code: entity?.code ?? '', 
     name: entity?.name ?? '', 
@@ -175,8 +133,9 @@ function SupplierForm({ entity, onClose, onSaved, showToast }) {
   async function submit(event) {
     event.preventDefault(); setSaving(true); setErrors({})
     try {
-      if (entity) await supplierApi.update(entity.id, form)
-      else await supplierApi.create(form)
+      const contact = { name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(), address: form.address.trim() }
+      if (entity) await supplierApi.update(entity.id, contact)
+      else await supplierApi.create({ code: form.code.trim(), ...contact })
       showToast(entity ? 'Đã cập nhật nhà cung cấp.' : 'Đã tạo nhà cung cấp.', 'success')
       await onSaved(); onClose()
     } catch (error) { 
@@ -204,8 +163,9 @@ function SupplierForm({ entity, onClose, onSaved, showToast }) {
           <input value={form.phone} onChange={update('phone')} style={s.input} />
         </div>
         <div style={s.inputGroup}>
-          <label style={s.label}>Email</label>
-          <input type="email" value={form.email} onChange={update('email')} style={s.input} />
+          <label style={s.label}>Email *</label>
+          <input type="email" required maxLength="254" value={form.email} onChange={update('email')} style={s.input} />
+          {errors.email && <span style={{ color: '#dc2626', fontSize: '12px' }}>{errors.email}</span>}
         </div>
         <div style={s.inputGroup}>
           <label style={s.label}>Địa chỉ</label>
@@ -299,8 +259,10 @@ export default function SupplierPage() {
               </tr>
             </thead>
             <tbody>
-              {list.result.content.length === 0 ? (
-                <tr><td colSpan={canManage ? 6 : 5} style={s.emptyTd}>Không có nhà cung cấp phù hợp.</td></tr>
+              {list.error ? (
+                <tr><td colSpan={canManage ? 6 : 5} style={{ ...s.emptyTd, color: '#dc2626' }}>{list.error}</td></tr>
+              ) : list.result.content.length === 0 ? (
+                <tr><td colSpan={canManage ? 6 : 5} style={s.emptyTd}>{list.loading ? 'Đang tải dữ liệu...' : 'Không có nhà cung cấp phù hợp.'}</td></tr>
               ) : (
                 list.result.content.map((item) => (
                   <tr key={item.id}>

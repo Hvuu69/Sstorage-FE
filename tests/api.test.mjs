@@ -2,10 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { categoryApi } from '../src/api/categories.js'
 import { unitApi } from '../src/api/units.js'
-import { productApi, importApi } from '../src/api/products.js'
+import { productApi, importApi, supplierApi } from '../src/api/products.js'
 import { dealerApi } from '../src/api/dealers.js'
 import { dealerRequestApi } from '../src/api/dealerRequests.js'
 import { identificationApi } from '../src/api/identification.js'
+import { supplierApi as supplierManagementApi } from '../src/features/suppliers/api/supplierApi.js'
 import { authApi, toCurrentUser } from '../src/features/auth/api/authApi.js'
 import { ApiError, configureAccessTokenProvider } from '../src/api/http.js'
 
@@ -28,6 +29,51 @@ test('inbound scan sends the decoded identifier to the selected draft voucher', 
   assert.match(request.url, /\/api\/v1\/imports\/voucher-1\/scan$/)
   assert.equal(request.options.method, 'POST')
   assert.deepEqual(JSON.parse(request.options.body), { code: 'QR-INBOUND-001' })
+})
+
+test('inbound supplier catalog is filtered by the backend and draft uses supplierId', async () => {
+  const calls = []
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method ?? 'GET', body: options.body })
+    return new Response(JSON.stringify({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  await supplierApi.listActive({ search: 'NCC', page: 0, size: 20 })
+  await supplierApi.products('supplier-1', { search: 'SP', page: 1, size: 10 })
+  await importApi.create({ supplierId: 'supplier-1', note: '', lines: [{ productId: 'p1', quantity: 2 }] })
+
+  assert.match(calls[0].url, /\/api\/v1\/suppliers\/active\?/)
+  assert.match(calls[0].url, /search=NCC/)
+  assert.match(calls[1].url, /\/api\/v1\/suppliers\/supplier-1\/products\?/)
+  assert.match(calls[1].url, /search=SP/)
+  assert.deepEqual(JSON.parse(calls[2].body), {
+    supplierId: 'supplier-1', note: '', lines: [{ productId: 'p1', quantity: 2 }],
+  })
+  assert.equal(JSON.parse(calls[2].body).partnerName, undefined)
+})
+
+test('supplier management uses backend list, create, update and soft-status contracts', async () => {
+  const calls = []
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method ?? 'GET', body: options.body })
+    return new Response(JSON.stringify({ content: [], page: 0, size: 10, totalElements: 0, totalPages: 0 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const payload = { code: 'NCC-01', name: 'Nhà cung cấp Một', phone: '', email: 'contact@example.com', address: '' }
+  await supplierManagementApi.list({ search: 'NCC', page: 0, size: 10 })
+  await supplierManagementApi.create(payload)
+  await supplierManagementApi.update('supplier-1', { name: payload.name, phone: '', email: payload.email, address: '' })
+  await supplierManagementApi.changeStatus('supplier-1', false)
+
+  assert.match(calls[0].url, /\/api\/v1\/suppliers\?/)
+  assert.match(calls[0].url, /search=NCC/)
+  assert.deepEqual(calls.map(call => call.method), ['GET', 'POST', 'PUT', 'PATCH'])
+  assert.equal(JSON.parse(calls[1].body).email, 'contact@example.com')
+  assert.equal(JSON.parse(calls[2].body).code, undefined)
+  assert.deepEqual(JSON.parse(calls[3].body), { active: false })
 })
 
 test('category list sends real pagination and search query', async () => {
@@ -140,9 +186,10 @@ test('product list sends search, filters and pagination to backend', async () =>
       status: 200, headers: { 'Content-Type': 'application/json' },
     })
   }
-  await productApi.list({ search: 'sp-01', categoryId: 'category-1', status: 'ACTIVE', page: 2, size: 10, sort: 'name,asc' })
+  await productApi.list({ search: 'sp-01', categoryId: 'category-1', supplierId: 'supplier-1', status: 'ACTIVE', page: 2, size: 10, sort: 'name,asc' })
   assert.match(requestedUrl, /search=sp-01/)
   assert.match(requestedUrl, /categoryId=category-1/)
+  assert.match(requestedUrl, /supplierId=supplier-1/)
   assert.match(requestedUrl, /status=ACTIVE/)
   assert.match(requestedUrl, /page=2/)
 })
@@ -155,12 +202,14 @@ test('product create, detail, edit and status use the agreed API contract', asyn
       status: 200, headers: { 'Content-Type': 'application/json' },
     })
   }
-  const payload = { sku: 'SP-01', name: 'Sản phẩm', categoryId: 'c1', unitId: 'u1', description: '' }
+  const payload = { sku: 'SP-01', name: 'Sản phẩm', categoryId: 'c1', unitId: 'u1', description: '', supplierIds: ['s1', 's2'] }
   await productApi.create(payload)
   await productApi.get('p1')
   await productApi.update('p1', payload)
   await productApi.changeStatus('p1', 'INACTIVE')
   assert.deepEqual(calls.map(({ method }) => method), ['POST', 'GET', 'PUT', 'PATCH'])
+  assert.deepEqual(JSON.parse(calls[0].body).supplierIds, ['s1', 's2'])
+  assert.deepEqual(JSON.parse(calls[2].body).supplierIds, ['s1', 's2'])
   assert.equal(JSON.parse(calls[3].body).status, 'INACTIVE')
 })
 
