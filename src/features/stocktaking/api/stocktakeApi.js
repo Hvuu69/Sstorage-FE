@@ -16,10 +16,10 @@ export const stocktakeApi = {
     }),
 
   // Tạo phiên kiểm kê
-  create: (note) =>
+  create: (productIds, note) =>
     request('/api/v1/stocktakes', {
       method: 'POST',
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ productIds, note }),
     }),
 
   // Bắt đầu kiểm kê
@@ -35,9 +35,9 @@ export const stocktakeApi = {
       body: JSON.stringify(payload),
     }),
 
-  // Quét mã sản phẩm
-  scan: (id, itemId, code) =>
-    request(`/api/v1/stocktakes/${id}/items/${itemId}/scan`, {
+  // Nhận diện sản phẩm bằng QR/RFID/SKU, không thay đổi số đếm
+  identify: (id, code) =>
+    request(`/api/v1/stocktakes/${id}/identify`, {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),

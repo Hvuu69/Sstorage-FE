@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { stocktakeApi } from '../api/stocktakeApi.js'
+import { productApi } from '../../products/api/productApi.js'
 import { UnifiedScanner } from '../../identification/index.js'
 import { useAuth } from '../../auth/authContext.js'
 import {
@@ -47,32 +48,19 @@ function StocktakeDetail({
   onReload,
   onNotify,
 }) {
-  const [counts, setCounts] = useState({})
-  const [notes, setNotes] = useState({})
+  const [counts, setCounts] = useState(() => Object.fromEntries(
+    detail.items.map((item) => [item.id, item.actualQuantity ?? '']),
+  ))
+  const [notes, setNotes] = useState(() => Object.fromEntries(
+    detail.items.map((item) => [item.id, item.note ?? '']),
+  ))
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [skuQuery, setSkuQuery] = useState('')
+  const [identifiedItemId, setIdentifiedItemId] = useState(null)
 
-  const manager = ['ADMIN', 'WAREHOUSE_MANAGER'].includes(role)
+  const manager = role === 'WAREHOUSE_MANAGER'
   const status = detail.stocktake.status
-
-  useEffect(() => {
-    setCounts(
-      Object.fromEntries(
-        detail.items.map((item) => [
-          item.id,
-          item.actualQuantity ?? '',
-        ]),
-      ),
-    )
-
-    setNotes(
-      Object.fromEntries(
-        detail.items.map((item) => [
-          item.id,
-          item.note ?? '',
-        ]),
-      ),
-    )
-  }, [detail])
+  const countable = ['IN_PROGRESS', 'RECOUNT_REQUIRED'].includes(status)
 
   async function saveCount(item) {
     const raw = counts[item.id]
@@ -105,28 +93,31 @@ function StocktakeDetail({
     await onReload()
   }
 
-  async function handleScan(product) {
-    const item = detail.items.find(
-      (candidate) => candidate.productId === product.productId,
-    )
-
-    if (!item) {
-      throw new Error(
-        'Sản phẩm vừa quét không thuộc phiên kiểm kê này.',
-      )
-    }
-
-    const result = await stocktakeApi.scan(
-      detail.stocktake.id,
-      item.id,
-      product.identifierValue,
-    )
-
-    await onReload()
-
+  async function identify(code) {
+    const result = await stocktakeApi.identify(detail.stocktake.id, code)
+    setIdentifiedItemId(result.itemId)
+    document.getElementById(`stocktake-item-${result.itemId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
     return {
       ...result,
-      message: `Đã ghi nhận ${result.sku}. Số đếm hiện tại: ${number(result.actualQuantity)}.`,
+      message: `Đã tìm thấy ${result.sku} — ${result.productName}. Hãy nhập số lượng thực tế.`,
+    }
+  }
+
+  async function handleScan(product) {
+    return identify(product.identifierValue || product.sku)
+  }
+
+  async function handleSkuSearch(event) {
+    event.preventDefault()
+    if (!skuQuery.trim()) return
+    try {
+      const result = await identify(skuQuery.trim())
+      onNotify(result.message)
+    } catch (requestError) {
+      onNotify(requestError.message, 'error')
     }
   }
 
@@ -181,8 +172,17 @@ function StocktakeDetail({
           </p>
         )}
 
-        {status === 'IN_PROGRESS' && (
+        {countable && (
           <section className="scan-panel">
+            <form className="toolbar-row" onSubmit={handleSkuSearch}>
+              <Input
+                value={skuQuery}
+                onChange={(event) => setSkuQuery(event.target.value)}
+                placeholder="Nhập chính xác SKU…"
+                aria-label="Tìm sản phẩm bằng SKU"
+              />
+              <Button type="submit" variant="secondary">Tìm SKU</Button>
+            </form>
             <Button
               onClick={() => setScannerOpen((value) => !value)}
               aria-label="Quét QR kiểm kê"
@@ -193,7 +193,7 @@ function StocktakeDetail({
             {scannerOpen && (
               <>
                 <h3>Quét QR / RFID</h3>
-                <p>Mỗi mã hợp lệ tự tìm đúng sản phẩm và tăng số đếm thêm 1.</p>
+                <p>Mã quét chỉ xác định sản phẩm; số thực tế được nhập và lưu riêng bên dưới.</p>
                 <UnifiedScanner compact singleShot onProductDetected={handleScan} />
               </>
             )}
@@ -215,7 +215,11 @@ function StocktakeDetail({
 
             <tbody>
               {detail.items.map((item) => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  id={`stocktake-item-${item.id}`}
+                  className={identifiedItemId === item.id ? 'stocktake-item-selected' : ''}
+                >
                   <td>
                     <strong>{item.sku}</strong>
                     <small className="table-subtext">
@@ -226,7 +230,7 @@ function StocktakeDetail({
                   <td>{number(item.systemQuantity)}</td>
 
                   <td>
-                    {status === 'IN_PROGRESS' ? (
+                    {countable ? (
                       <Input
                         className="count-input"
                         type="number"
@@ -265,7 +269,7 @@ function StocktakeDetail({
                   </td>
 
                   <td>
-                    {status === 'IN_PROGRESS' ? (
+                    {countable ? (
                       <Input
                         value={notes[item.id] ?? ''}
                         onChange={(event) =>
@@ -282,7 +286,7 @@ function StocktakeDetail({
                   </td>
 
                   <td>
-                    {status === 'IN_PROGRESS' && (
+                    {countable && (
                       <Button
                         onClick={() => saveCount(item)}
                         disabled={busy}
@@ -312,43 +316,45 @@ function StocktakeDetail({
           </Button>
         )}
 
-        {status === 'IN_PROGRESS' && (
+        {countable && (
           <Button
             onClick={() =>
               onAction(
                 () => stocktakeApi.submit(detail.stocktake.id),
-                'Đã gửi kết quả kiểm kê.',
+                status === 'RECOUNT_REQUIRED'
+                  ? 'Đã gửi lại kết quả kiểm kê.'
+                  : 'Đã gửi kết quả kiểm kê.',
               )
             }
           >
-            Gửi kết quả
+            {status === 'RECOUNT_REQUIRED' ? 'Gửi lại kết quả' : 'Gửi kết quả'}
           </Button>
         )}
 
         {status === 'PENDING_CONFIRMATION' && manager && (
-          <Button
-            onClick={() =>
-              onAction(
-                () => stocktakeApi.approve(detail.stocktake.id),
-                'Đã xử lý phê duyệt; trạng thái phiên đã được cập nhật.',
-              )
-            }
-          >
-            Phê duyệt kết quả
-          </Button>
-        )}
-
-        {status === 'RECOUNT_REQUIRED' && manager && (
-          <Button
-            onClick={() =>
-              onAction(
-                () => stocktakeApi.recount(detail.stocktake.id),
-                'Đã tạo lại snapshot kiểm kê.',
-              )
-            }
-          >
-            Tạo lại snapshot
-          </Button>
+          <>
+            <Button
+              onClick={() =>
+                onAction(
+                  () => stocktakeApi.approve(detail.stocktake.id),
+                  'Đã xử lý phê duyệt; trạng thái phiên đã được cập nhật.',
+                )
+              }
+            >
+              Phê duyệt kết quả
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                onAction(
+                  () => stocktakeApi.recount(detail.stocktake.id),
+                  'Đã yêu cầu nhân viên kiểm kê lại.',
+                )
+              }
+            >
+              Yêu cầu kiểm kê lại
+            </Button>
+          </>
         )}
 
         {[
@@ -383,10 +389,7 @@ export default function StocktakingPage() {
   const { currentUser } = useAuth()
   const { notify } = useToast()
 
-  const manager = [
-    'ADMIN',
-    'WAREHOUSE_MANAGER',
-  ].includes(currentUser?.role)
+  const manager = currentUser?.role === 'WAREHOUSE_MANAGER'
 
   const [sessions, setSessions] = useState([])
   const [status, setStatus] = useState('')
@@ -397,6 +400,10 @@ export default function StocktakingPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [products, setProducts] = useState([])
+  const [selectedProductIds, setSelectedProductIds] = useState([])
+  const [productSearch, setProductSearch] = useState('')
+  const [productsLoading, setProductsLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -414,8 +421,39 @@ export default function StocktakingPage() {
   }, [status])
 
   useEffect(() => {
-    load()
+    const timer = window.setTimeout(load, 0)
+    return () => window.clearTimeout(timer)
   }, [load])
+
+  async function openCreateDialog() {
+    setCreateOpen(true)
+    setProductsLoading(true)
+    try {
+      const firstPage = await productApi.list({
+        page: 0,
+        size: 100,
+        sort: 'name,asc',
+        status: 'ACTIVE',
+      })
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, (_, index) =>
+          productApi.list({
+            page: index + 1,
+            size: 100,
+            sort: 'name,asc',
+            status: 'ACTIVE',
+          })),
+      )
+      setProducts([
+        ...(firstPage.content || []),
+        ...remainingPages.flatMap((page) => page.content || []),
+      ])
+    } catch (requestError) {
+      notify(requestError.message, 'error')
+    } finally {
+      setProductsLoading(false)
+    }
+  }
 
   async function open(id) {
     try {
@@ -444,15 +482,22 @@ export default function StocktakingPage() {
   }
 
   async function create() {
+    if (selectedProductIds.length === 0) {
+      notify('Hãy chọn ít nhất một sản phẩm cần kiểm kê.', 'error')
+      return
+    }
     setCreating(true)
 
     try {
       const created = await stocktakeApi.create(
+        selectedProductIds,
         note.trim() || null,
       )
 
       notify('Đã tạo phiên kiểm kê.')
       setNote('')
+      setSelectedProductIds([])
+      setProductSearch('')
       setCreateOpen(false)
 
       await load()
@@ -513,7 +558,7 @@ export default function StocktakingPage() {
         description="Đối chiếu số lượng thực tế với snapshot tồn kho; chỉ cập nhật tồn sau khi quản lý phê duyệt."
         actions={
           manager && (
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={openCreateDialog}>
               + Tạo phiên kiểm kê
             </Button>
           )
@@ -582,10 +627,40 @@ export default function StocktakingPage() {
                 />
               </Field>
 
+              <Field label={`Sản phẩm kiểm kê (${selectedProductIds.length} đã chọn)`}>
+                <Input
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Tìm theo SKU hoặc tên sản phẩm…"
+                />
+                <div className="stocktake-product-picker">
+                  {productsLoading ? (
+                    <p>Đang tải sản phẩm…</p>
+                  ) : products
+                    .filter((product) => {
+                      const query = productSearch.trim().toLowerCase()
+                      return !query || product.sku?.toLowerCase().includes(query)
+                        || product.name?.toLowerCase().includes(query)
+                    })
+                    .map((product) => (
+                      <label key={product.id} className="stocktake-product-option">
+                        <input
+                          type="checkbox"
+                          checked={selectedProductIds.includes(product.id)}
+                          onChange={(event) => setSelectedProductIds((current) =>
+                            event.target.checked
+                              ? [...current, product.id]
+                              : current.filter((id) => id !== product.id))}
+                        />
+                        <span><strong>{product.sku}</strong> — {product.name}</span>
+                      </label>
+                    ))}
+                </div>
+              </Field>
+
               <p className="notice">
-                Hệ thống chụp số tồn hiện tại của tất cả
-                sản phẩm đang hoạt động. Không thay đổi
-                tồn kho khi tạo phiên.
+                Hệ thống chỉ chụp số tồn hiện tại của các sản phẩm đã chọn.
+                Tạo phiên không làm thay đổi tồn kho.
               </p>
             </div>
 
@@ -607,7 +682,9 @@ export default function StocktakingPage() {
 
       {selected && (
         <StocktakeDetail
-          key={selected.stocktake.id}
+          key={`${selected.stocktake.id}-${selected.stocktake.status}-${selected.items
+            .map((item) => `${item.id}:${item.actualQuantity}:${item.countedAt}`)
+            .join('|')}`}
           detail={selected}
           role={currentUser?.role}
           busy={busy}

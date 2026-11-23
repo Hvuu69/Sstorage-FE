@@ -286,6 +286,33 @@ th { color: var(--slate-500); background: #f8fafc; text-transform: uppercase; fo
   font-size: 12px;
 }
 
+.stocktake-item-selected {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, transparent);
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+}
+
+.stocktake-product-picker {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 10px;
+  border: 1px solid var(--color-border, #dbe2ea);
+  border-radius: 8px;
+}
+
+.stocktake-product-option {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border, #edf0f4);
+  cursor: pointer;
+}
+
+.stocktake-product-option:last-child {
+  border-bottom: 0;
+}
+
 @media (max-width: 640px) {
   .alert-toolbar,
   .policy-form-grid {
