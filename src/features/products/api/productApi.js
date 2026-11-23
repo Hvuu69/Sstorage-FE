@@ -12,6 +12,7 @@ export const importApi = {
   list: async (query, options = {}) => normalizePage(await request('/api/v1/imports', { query, signal: options.signal, skipAuthRedirect: true })),
   get: (id, options = {}) => request(`/api/v1/imports/${id}`, { signal: options.signal, skipAuthRedirect: true }),
   create: (payload) => request('/api/v1/imports', { method: 'POST', body: JSON.stringify(payload) }),
+  scan: (id, code) => request(`/api/v1/imports/${id}/scan`, { method: 'POST', body: JSON.stringify({ code }) }),
   complete: (id) => request(`/api/v1/imports/${id}/complete`, { method: 'PATCH' }),
   cancel: (id) => request(`/api/v1/imports/${id}/cancel`, { method: 'PATCH' }),
 }

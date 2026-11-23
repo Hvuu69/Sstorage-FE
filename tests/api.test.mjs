@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { categoryApi } from '../src/api/categories.js'
 import { unitApi } from '../src/api/units.js'
-import { productApi } from '../src/api/products.js'
+import { productApi, importApi } from '../src/api/products.js'
 import { dealerApi } from '../src/api/dealers.js'
 import { dealerRequestApi } from '../src/api/dealerRequests.js'
 import { identificationApi } from '../src/api/identification.js'
@@ -12,6 +12,22 @@ import { ApiError, configureAccessTokenProvider } from '../src/api/http.js'
 test.afterEach(() => {
   configureAccessTokenProvider(() => null)
   delete global.fetch
+})
+
+test('inbound scan sends the decoded identifier to the selected draft voucher', async () => {
+  let request
+  global.fetch = async (url, options) => {
+    request = { url, options }
+    return new Response(JSON.stringify({ id: 'voucher-1', items: [{ productId: 'p1', quantity: 2 }] }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  await importApi.scan('voucher-1', 'QR-INBOUND-001')
+
+  assert.match(request.url, /\/api\/v1\/imports\/voucher-1\/scan$/)
+  assert.equal(request.options.method, 'POST')
+  assert.deepEqual(JSON.parse(request.options.body), { code: 'QR-INBOUND-001' })
 })
 
 test('category list sends real pagination and search query', async () => {

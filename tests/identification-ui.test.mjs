@@ -80,7 +80,12 @@ test('duplicate scan debounce allows the same code only after it leaves the fram
   assert.equal(accept('QR-02'), true)
   now = 4000
   assert.equal(accept('QR-02'), false)
-  now = 6100
+  accept.markAbsent()
+  now = 5500
+  assert.equal(accept('QR-02'), false)
+  now = 6000
+  accept.markAbsent()
+  now = 8101
   accept.markAbsent()
   assert.equal(accept('QR-02'), true)
 })

@@ -31,6 +31,13 @@ const dateTime = (value) =>
 const number = (value) =>
   Number(value ?? 0).toLocaleString('vi-VN')
 
+const QrIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3" />
+  </svg>
+)
+
 function StocktakeDetail({
   detail,
   role,
@@ -42,7 +49,7 @@ function StocktakeDetail({
 }) {
   const [counts, setCounts] = useState({})
   const [notes, setNotes] = useState({})
-  const [scanItem, setScanItem] = useState('')
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   const manager = ['ADMIN', 'WAREHOUSE_MANAGER'].includes(role)
   const status = detail.stocktake.status
@@ -98,17 +105,21 @@ function StocktakeDetail({
     await onReload()
   }
 
-  async function handleScan(code) {
-    if (!scanItem) {
+  async function handleScan(product) {
+    const item = detail.items.find(
+      (candidate) => candidate.productId === product.productId,
+    )
+
+    if (!item) {
       throw new Error(
-        'Hãy chọn sản phẩm trước khi quét QR/RFID.',
+        'Sản phẩm vừa quét không thuộc phiên kiểm kê này.',
       )
     }
 
     const result = await stocktakeApi.scan(
       detail.stocktake.id,
-      scanItem,
-      code,
+      item.id,
+      product.identifierValue,
     )
 
     await onReload()
@@ -172,34 +183,20 @@ function StocktakeDetail({
 
         {status === 'IN_PROGRESS' && (
           <section className="scan-panel">
-            <h3>Quét QR / RFID</h3>
+            <Button
+              onClick={() => setScannerOpen((value) => !value)}
+              aria-label="Quét QR kiểm kê"
+            >
+              <QrIcon /> {scannerOpen ? 'Đóng máy quét' : 'Quét QR kiểm kê'}
+            </Button>
 
-            <p>
-              Mỗi mã hợp lệ sẽ tăng số đếm thêm 1.
-              Mã phải thuộc đúng sản phẩm đang chọn.
-            </p>
-
-            <Field label="Sản phẩm cần kiểm đếm">
-              <Select
-                aria-label="Sản phẩm cần quét"
-                value={scanItem}
-                onChange={(event) =>
-                  setScanItem(event.target.value)
-                }
-              >
-                <option value="">
-                  Chọn sản phẩm trước khi quét
-                </option>
-
-                {detail.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.sku} · {item.productName}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            <UnifiedScanner onCodeScanned={handleScan} />
+            {scannerOpen && (
+              <>
+                <h3>Quét QR / RFID</h3>
+                <p>Mỗi mã hợp lệ tự tìm đúng sản phẩm và tăng số đếm thêm 1.</p>
+                <UnifiedScanner compact singleShot onProductDetected={handleScan} />
+              </>
+            )}
           </section>
         )}
 
@@ -503,7 +500,7 @@ export default function StocktakingPage() {
           variant="text"
           onClick={() => open(item.id)}
         >
-          Chi tiết / xử lý
+          {item.status === 'IN_PROGRESS' && <QrIcon />} Chi tiết / xử lý
         </Button>
       ),
     },

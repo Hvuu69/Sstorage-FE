@@ -1,1 +1,1 @@
-export { productApi } from '../features/products/api/productApi.js'
+export { productApi, importApi } from '../features/products/api/productApi.js'

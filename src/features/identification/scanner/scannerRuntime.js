@@ -8,24 +8,32 @@ export const SCANNER_FORMAT_NAMES = ['QR_CODE', 'EAN_13', 'UPC_A', 'CODE_128']
 const ROUTINE_DECODE_ERRORS = new Set(['NotFoundException', 'ChecksumException', 'FormatException'])
 
 export function createScanDeduper(windowMs = DUPLICATE_WINDOW_MS, now = () => Date.now()) {
-  let previousCode = null
-  let lastSeenAt = 0
+  const seenCodes = new Set()
+  let absentSince = null
   const accept = (rawCode) => {
     const code = rawCode?.trim()
     if (!code) return false
-    const current = now()
-    if (code === previousCode) {
-      lastSeenAt = current
-      return false
-    }
-    previousCode = code
-    lastSeenAt = current
+    absentSince = null
+    if (seenCodes.has(code)) return false
+    seenCodes.add(code)
     return true
   }
   accept.markAbsent = () => {
-    if (previousCode && now() - lastSeenAt >= windowMs) previousCode = null
+    if (seenCodes.size === 0) return
+    const current = now()
+    if (absentSince === null) {
+      absentSince = current
+      return
+    }
+    if (current - absentSince >= windowMs) {
+      seenCodes.clear()
+      absentSince = null
+    }
   }
-  accept.reset = () => { previousCode = null }
+  accept.reset = () => {
+    seenCodes.clear()
+    absentSince = null
+  }
   return accept
 }
 

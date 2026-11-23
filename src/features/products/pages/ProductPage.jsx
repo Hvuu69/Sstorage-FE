@@ -6,6 +6,7 @@ import usePagedResource from '../../../shared/hooks/usePagedResource.js'
 import { ConfirmDialog, Modal, StatusBadge, useToast } from '../../../shared/ui/index.js'
 import { productApi, importApi, exportApi, supplierApi } from '../api/productApi.js'
 import { canManageProducts, canViewInternalStock } from '../productPermissions.js'
+import { UnifiedScanner } from '../../identification/index.js'
 
 // ==========================================
 // HÀM HỖ TRỢ CACHE
@@ -87,6 +88,13 @@ const SearchIcon = () => (
   </svg>
 );
 
+const QrIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3" />
+  </svg>
+);
+
 // ==========================================
 // HELPERS XỬ LÝ STATUS PHIẾU
 // ==========================================
@@ -131,11 +139,29 @@ function ProductDetailModal({ product, onClose, showStock }) {
 // ==========================================
 // MODAL XEM CHI TIẾT PHIẾU NHẬP/XUẤT
 // ==========================================
-function VoucherDetailModal({ voucher, onClose, onRequestConfirm }) {
+function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowScan = false, onVoucherUpdated }) {
+  const { notify } = useToast();
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const isDraft = isDraftVoucher(voucher.status);
   const statusLabel = getVoucherStatusLabel(voucher.status);
   const totalQty = voucher.totalQuantity ?? voucher.qty ?? 0;
   const items = voucher.items || voucher.lines || [];
+
+  const handleProductDetected = async (product) => {
+    if (scanning) return;
+    setScanning(true);
+    try {
+      const updated = await importApi.scan(voucher.id, product.identifierValue);
+      onVoucherUpdated?.(updated);
+      notify(`Đã thêm ${product.sku}; số lượng trong phiếu đã được cập nhật.`);
+    } catch (error) {
+      notify(error?.message || 'Không thể thêm sản phẩm từ mã vừa quét.', 'error');
+      throw error;
+    } finally {
+      setScanning(false);
+    }
+  };
 
   return (
     <div style={s.modalOverlay}>
@@ -148,8 +174,29 @@ function VoucherDetailModal({ voucher, onClose, onRequestConfirm }) {
         <div style={s.modalBody}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={getVoucherStatusStyle(voucher.status)}>{statusLabel}</span>
-            <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Tổng: {totalQty}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {allowScan && isDraft && (
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(value => !value)}
+                  style={{ ...s.btnPrimary, display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                  aria-label="Quét QR thêm sản phẩm"
+                >
+                  <QrIcon /> {scannerOpen ? 'Đóng máy quét' : 'Quét QR'}
+                </button>
+              )}
+              <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Tổng: {totalQty}</span>
+            </div>
           </div>
+
+          {allowScan && isDraft && scannerOpen && (
+            <section className="scan-panel">
+              <h3>Quét sản phẩm nhập kho</h3>
+              <p>Mỗi lần quét hợp lệ sẽ thêm 1 sản phẩm. Nếu sản phẩm đã có trong phiếu, số lượng sẽ tự tăng thêm 1.</p>
+              <UnifiedScanner compact singleShot onProductDetected={handleProductDetected} />
+              {scanning && <p className="muted">Đang cập nhật phiếu nhập…</p>}
+            </section>
+          )}
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div style={s.detailItem}><span style={s.detailLabel}>Đối tác</span><span style={s.detailValue}>{voucher.partner || '—'}</span></div>
@@ -327,12 +374,12 @@ function CreateImportModal({ onClose, onSave }) {
     try {
       // ✅ Gửi đúng cấu trúc Backend yêu cầu
       await onSave({
-        partnerName: request.trim(), // Lấy mã yêu cầu làm tên đối tác
+        partnerName: selectedSupplier,
         note: '',
         lines: selectedItems,
       });
     } catch (e) {
-      notify(e?.message || 'Không tạo được phiếu xuất.', 'error');
+      notify(e?.message || 'Không tạo được phiếu nhập.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -691,7 +738,7 @@ export function ImportPage() {
                   <td style={s.td}>{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : (row.date || '—')}</td>
                   <td style={s.td}>{row.totalQuantity ?? row.qty ?? 0}</td>
                   <td style={s.td}><span style={getVoucherStatusStyle(row.status)}>{getVoucherStatusLabel(row.status)}</span></td>
-                  <td style={s.td}><button style={s.btnAction} onClick={() => setSelectedVoucher(row)}>Chi tiết</button></td>
+                  <td style={s.td}><button style={{ ...s.btnAction, display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={() => setSelectedVoucher(row)}><QrIcon size={16} /> Chi tiết</button></td>
                 </tr>
               ))
             )}
@@ -705,6 +752,11 @@ export function ImportPage() {
           voucher={selectedVoucher} 
           onClose={() => setSelectedVoucher(null)} 
           onRequestConfirm={handleVoucherAction} 
+          allowScan
+          onVoucherUpdated={(updated) => {
+            setSelectedVoucher(updated);
+            setVouchers(current => current.map(item => item.id === updated.id ? updated : item));
+          }}
         />
       )}
 

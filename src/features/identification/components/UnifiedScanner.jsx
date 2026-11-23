@@ -44,7 +44,13 @@ function lookupErrorMessage(error) {
   return error?.message || 'Không thể kết nối Backend.'
 }
 
-export default function UnifiedScanner({ onLookupStarted, onProductDetected, createScanner = createBrowserScanner }) {
+export default function UnifiedScanner({
+  onLookupStarted,
+  onProductDetected,
+  createScanner = createBrowserScanner,
+  compact = false,
+  singleShot = false,
+}) {
   const videoRef = useRef(null)
   const frameCanvasRef = useRef(null)
   const controlRef = useRef(null)
@@ -56,6 +62,7 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
   const cameraSessionRef = useRef(0)
   const debugFrameUrlRef = useRef(null)
   const dedupeRef = useRef(createScanDeduper())
+  const scanLockedRef = useRef(false)
   const [cameraState, setCameraState] = useState('idle')
   const [cameras, setCameras] = useState([])
   const [selectedDeviceId, setSelectedDeviceId] = useState('')
@@ -67,6 +74,7 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
   const [cameraSettings, setCameraSettings] = useState(null)
   const [debugFrame, setDebugFrame] = useState(null)
   const [message, setMessage] = useState('Bạn có thể bật camera hoặc nhập mã thủ công.')
+  const [scanLocked, setScanLocked] = useState(false)
 
   const stopCamera = useCallback(() => {
     cameraSessionRef.current += 1
@@ -111,9 +119,16 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
     try {
       const product = await identificationApi.lookup(code)
       if (!mountedRef.current) return
+      await onProductDetected?.(product)
+      if (!mountedRef.current) return
+      if (singleShot) {
+        scanLockedRef.current = true
+        setScanLocked(true)
+      }
       setLookupState('success')
-      setMessage(`Đã nhận diện ${product.productName}.`)
-      onProductDetected?.(product)
+      setMessage(singleShot
+        ? `Đã ghi nhận ${product.productName}. Đưa mã ra khỏi khung trước khi quét tiếp.`
+        : `Đã nhận diện ${product.productName}.`)
     } catch (error) {
       if (!mountedRef.current) return
       setLookupState('error')
@@ -121,21 +136,34 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
     } finally {
       inFlightRef.current = false
     }
-  }, [onLookupStarted, onProductDetected])
+  }, [onLookupStarted, onProductDetected, singleShot])
 
   const processDecoded = useCallback((rawCode, source = 'camera', format = 'UNKNOWN') => {
     const code = rawCode?.trim()
     if (!code) return
     setLastDecoded(code)
     debugInfo('Decoded text.', { source, format, value: code })
-    if (inFlightRef.current || !dedupeRef.current(code)) return
+    if (scanLockedRef.current || inFlightRef.current || !dedupeRef.current(code)) return
     // A passive effect starts lookup only after React commits "Mã vừa quét" to the UI.
     setPendingLookup({ code })
   }, [])
 
+  function armNextScan() {
+    dedupeRef.current.reset()
+    scanLockedRef.current = false
+    setScanLocked(false)
+    setLookupState('idle')
+    setLastDecoded('')
+    setMessage('Sẵn sàng quét sản phẩm tiếp theo.')
+  }
+
   useEffect(() => {
     if (!pendingLookup) return undefined
-    const timeoutId = globalThis.setTimeout(() => identify(pendingLookup.code), 0)
+    const queuedLookup = pendingLookup
+    const timeoutId = globalThis.setTimeout(() => {
+      setPendingLookup((current) => current === queuedLookup ? null : current)
+      identify(queuedLookup.code)
+    }, 0)
     return () => globalThis.clearTimeout(timeoutId)
   }, [identify, pendingLookup])
 
@@ -336,8 +364,9 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
       {cameraState === 'ready' ? <Button variant="secondary" onClick={stopCamera}>Tắt camera</Button> : <Button onClick={() => startCamera()} disabled={cameraState === 'starting'}>{cameraState === 'starting' ? 'Đang mở…' : 'Bật camera'}</Button>}
       <span className={`scanner-message ${lookupState === 'error' || cameraState === 'error' ? 'error' : ''}`} role="status">{message}</span>
     </div>
-    <div className="last-decoded" aria-live="polite"><strong>Mã vừa quét:</strong> <span>{lastDecoded || 'Chưa có'}</span></div>
-    {debugEnabled && <section className="scanner-debug" aria-label="Debug camera scanner">
+    {singleShot && scanLocked && <Button variant="secondary" onClick={armNextScan}>Quét sản phẩm tiếp theo</Button>}
+    {!compact && <div className="last-decoded" aria-live="polite"><strong>Mã vừa quét:</strong> <span>{lastDecoded || 'Chưa có'}</span></div>}
+    {!compact && debugEnabled && <section className="scanner-debug" aria-label="Debug camera scanner">
       <div className="scanner-debug-actions">
         <Button variant="secondary" onClick={captureDebugFrame} disabled={cameraState !== 'ready'}>Chụp frame đang quét</Button>
         {scannerStats && <span>Frames: {scannerStats.frames} · Miss: {scannerStats.misses} · Decode: {scannerStats.decoded} · {scannerStats.width}×{scannerStats.height} · {scannerStats.framesPerSecond.toFixed(1)} fps</span>}
@@ -355,7 +384,7 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
       </div>}
       {debugFrame && !debugFrame.url && <span>{debugFrame.status}</span>}
     </section>}
-    {cameras.length > 0 && <Field label="Camera">
+    {!compact && cameras.length > 0 && <Field label="Camera">
       <Select value={selectedDeviceId} onChange={changeCamera} disabled={cameraState === 'starting'}>
         {!selectedDeviceId && <option value="">Camera mặc định</option>}
         {cameras.map((camera, index) => <option key={camera.deviceId || `camera-${index}`} value={camera.deviceId}>{camera.label || `Camera ${index + 1}`}</option>)}
@@ -364,6 +393,6 @@ export default function UnifiedScanner({ onLookupStarted, onProductDetected, cre
     <Field label="Đọc QR/Barcode từ ảnh" hint="Hỗ trợ PNG, JPG và WebP.">
       <input className="image-code-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadImage} disabled={uploadState === 'loading'} />
     </Field>
-    <ManualCodeInput onSubmit={(code) => processDecoded(code, 'manual')} disabled={lookupState === 'loading'} />
+    {!compact && <ManualCodeInput onSubmit={(code) => processDecoded(code, 'manual')} disabled={lookupState === 'loading' || scanLocked} />}
   </div>
 }
