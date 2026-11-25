@@ -22,7 +22,6 @@ function UserForm({ user, currentUser, onClose, onSaved }) {
     email: user?.email ?? '',
     role: user?.role ?? ROLES.WAREHOUSE_STAFF,
     dealerId: user?.dealerId ?? '',
-    password: '',
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
@@ -38,8 +37,7 @@ function UserForm({ user, currentUser, onClose, onSaved }) {
       role: form.role,
       dealerId: form.role === ROLES.DEALER ? form.dealerId.trim() : null,
     }
-    if (user) payload.newPassword = form.password
-    else payload.password = form.password
+    if (!user) payload.password = form.password
 
     try {
       if (user) await userApi.update(user.id, payload)
@@ -66,9 +64,9 @@ function UserForm({ user, currentUser, onClose, onSaved }) {
         {isSelf && <small className="field-hint">Không thể tự thay đổi vai trò quản trị của tài khoản đang dùng.</small>}
       </Field>
       {form.role === ROLES.DEALER && <Field label="Mã đại lý (UUID) *" error={errors.dealerId} hint="Nhập mã đại lý đã tồn tại trong hệ thống."><Input required value={form.dealerId} onChange={update('dealerId')} /></Field>}
-      <Field label={user ? 'Mật khẩu mới' : 'Mật khẩu khởi tạo *'} error={errors[user ? 'newPassword' : 'password']} hint={user ? 'Để trống nếu không đổi mật khẩu.' : 'Tối thiểu 8 ký tự.'}>
-        <Input required={!user} type="password" autoComplete="new-password" minLength={user ? undefined : 8} maxLength="72" value={form.password} onChange={update('password')} />
-      </Field>
+      {!user && <Field label="Mật khẩu khởi tạo *" error={errors.password} hint="Tối thiểu 8 ký tự.">
+        <Input required type="password" autoComplete="new-password" minLength={8} maxLength="72" value={form.password} onChange={update('password')} />
+      </Field>}
     </div>
     <div className="modal-actions"><Button variant="secondary" onClick={onClose} disabled={saving}>Hủy</Button><Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu tài khoản'}</Button></div>
   </form>

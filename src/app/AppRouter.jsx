@@ -13,6 +13,7 @@ import {
 } from '../features/auth/ProtectedRoute.jsx'
 
 import LoginPage from '../features/auth/pages/LoginPage.jsx'
+import ForgotPasswordPage from '../features/auth/pages/ForgotPasswordPage.jsx'
 import CategoryPage from '../features/categories/pages/CategoryPage.jsx'
 import DashboardPage from '../features/dashboard/pages/DashboardPage.jsx'
 import DealerPage from '../features/dealers/pages/DealerPage.jsx'
@@ -102,6 +103,7 @@ export default function AppRouter() {
             path="/login"
             element={<LoginPage />}
           />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         </Route>
       </Route>
 

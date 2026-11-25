@@ -22,6 +22,15 @@ export function toCurrentUser(response) {
 }
 
 export const authApi = {
+  requestPasswordReset: ({ email }) => request('/api/auth/password-reset/request', {
+    method: 'POST', body: JSON.stringify({ email: email.trim() }), skipAuthRedirect: true,
+  }),
+  verifyPasswordResetOtp: ({ email, otp }) => request('/api/auth/password-reset/verify', {
+    method: 'POST', body: JSON.stringify({ email: email.trim(), otp }), skipAuthRedirect: true,
+  }),
+  completePasswordReset: ({ email, resetToken, password, confirmPassword }) => request('/api/auth/password-reset/complete', {
+    method: 'POST', body: JSON.stringify({ email: email.trim(), resetToken, password, confirmPassword }), skipAuthRedirect: true,
+  }),
   login: async ({ email, password }) => {
     const response = await request('/api/auth/login', {
       method: 'POST',

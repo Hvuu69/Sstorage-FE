@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { firstRouteForRole } from '../../../app/routeConfig.js'
 import { Field, Input } from '../../../shared/ui/FormControls.jsx'
 import { authApi } from '../api/authApi.js'
@@ -22,6 +22,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [resetNotice] = useState(() => location.state?.passwordReset ? 'Mật khẩu đã được đổi. Hãy đăng nhập bằng mật khẩu mới.' : '')
 
   useEffect(() => {
     try {
@@ -50,6 +51,7 @@ export default function LoginPage() {
       <div className="eyebrow">SMARTWH · AUTH</div>
       <h2>Đăng nhập hệ thống</h2>
       <p>Nhập email và mật khẩu tài khoản của bạn để tiếp tục.</p>
+      {resetNotice && <p className="password-reset-message" role="status">{resetNotice}</p>}
       <form className="login-form" onSubmit={handleSubmit}>
         <Field label="Email">
           <Input
@@ -102,6 +104,7 @@ export default function LoginPage() {
           {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
         </button>
       </form>
+      <Link className="forgot-password-link" to="/forgot-password">Quên mật khẩu?</Link>
       <small>Phiên đăng nhập được bảo vệ bằng token do máy chủ cấp.</small>
     </div>
   )
