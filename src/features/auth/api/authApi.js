@@ -1,5 +1,5 @@
 import { ROLES } from '../../../app/routeConfig.js'
-import { request } from '../../../shared/api/http.js'
+import { request, configureAccessTokenProvider } from '../../../shared/api/http.js' // ✅ Thêm import
 
 const validRoles = new Set(Object.values(ROLES))
 
@@ -27,7 +27,14 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email: email.trim(), password }),
     })
-    return toCurrentUser(response)
+    const user = toCurrentUser(response)
+
+    // ✅ Lưu token vào localStorage để duy trì qua các lần reload
+    localStorage.setItem('accessToken', user.accessToken)
+    // ✅ Đăng ký provider để các request sau này tự động gửi kèm token
+    configureAccessTokenProvider(() => localStorage.getItem('accessToken'))
+
+    return user
   },
   restoreSession: async (currentUser) => {
     if (currentUser?.previewOnly) return currentUser

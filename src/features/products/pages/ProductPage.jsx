@@ -7,6 +7,7 @@ import { ConfirmDialog, Modal, StatusBadge, useToast } from '../../../shared/ui/
 import { productApi, importApi, exportApi, supplierApi } from '../api/productApi.js'
 import { canManageProducts, canViewInternalStock } from '../productPermissions.js'
 import { UnifiedScanner } from '../../identification/index.js'
+import { dealerApi } from '../../dealers/api/dealerApi.js'
 
 // ==========================================
 // CSS GỘP TRONG CODE
@@ -104,6 +105,54 @@ const isDraftVoucher = (status) => {
 };
 
 // ==========================================
+// LOẠI XUẤT KHO (Đã rút gọn)
+// ==========================================
+const EXPORT_TYPES = [
+  { value: 'SALE', label: 'Xuất bán hàng', description: 'Xuất sản phẩm để bán cho đại lý/khách hàng.' },
+  { value: 'DISPOSE', label: 'Xuất hủy', description: 'Hủy hàng hỏng, lỗi hoặc hết hạn sử dụng.' },
+];
+
+const getExportTypeLabel = (type) => {
+  const found = EXPORT_TYPES.find(t => t.value === type);
+  return found ? found.label : '—';
+};
+
+// ==========================================
+// ĐỐI TÁC THEO LOẠI XUẤT KHO
+// ==========================================
+const EXPORT_PARTNER_SOURCE = {
+  SALE:            { kind: 'customer',  label: 'Đại lý' },
+  DISPOSE:         { kind: 'none',      label: 'Người lập phiếu' },
+};
+
+// Tải danh sách đối tác theo loại xuất.
+async function fetchPartnersByExportType(exportType) {
+  const source = EXPORT_PARTNER_SOURCE[exportType];
+  if (!source || source.kind === 'none') return [];
+  
+  try {
+    let rawData = [];
+
+    if (source.kind === 'customer') {
+      // Lấy danh sách đại lý
+      const res = await dealerApi.list(); 
+      if (Array.isArray(res)) rawData = res;
+      else if (res?.content) rawData = res.content;
+      else if (res?.data) rawData = Array.isArray(res.data) ? res.data : (res.data.content || []);
+    }
+
+    return rawData.map((x) => ({
+      id: x.id || x.dealerId,
+      name: x.name || x.dealerName || x.fullName || x.code || `#${x.id}`
+    })).filter(item => item.name);
+
+  } catch (err) {
+    console.error("Lỗi tải danh sách đối tác:", err);
+    return [];
+  }
+}
+
+// ==========================================
 // MODAL CHI TIẾT SẢN PHẨM
 // ==========================================
 function SupplierBadges({ suppliers = [] }) {
@@ -168,7 +217,10 @@ export function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowSc
   const isDraft = isDraftVoucher(voucher.status);
   const statusLabel = getVoucherStatusLabel(voucher.status);
   const items = allowScan && isDraft ? draftItems : (voucher.items || voucher.lines || []);
-  const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const totalQty = items.length
+    ? items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+    : (voucher.totalQuantity ?? voucher.qty ?? 0);
+  const exportTypeLabel = voucher.exportType ? getExportTypeLabel(voucher.exportType) : null;
   const formatDateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
 
   useEffect(() => {
@@ -238,6 +290,12 @@ export function VoucherDetailModal({ voucher, onClose, onRequestConfirm, allowSc
               )}
               <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Tổng: {totalQty}</span>
             </div>
+            {exportTypeLabel && (
+              <div style={s.detailItem}>
+                <span style={s.detailLabel}>Loại xuất kho</span>
+                <span style={s.detailValue}>{exportTypeLabel}</span>
+              </div>
+            )}
           </div>
 
           {allowScan && isDraft && scannerOpen && (
@@ -384,7 +442,6 @@ export function CreateImportModal({ onClose, onSave }) {
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   
-  // ✅ State cho phần tìm kiếm nhà cung cấp
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
   const [searchSupplier, setSearchSupplier] = useState('');
   const dropdownRef = useRef(null);
@@ -422,7 +479,6 @@ export function CreateImportModal({ onClose, onSave }) {
     return () => controller.abort();
   }, [selectedSupplier, productSearch, productPage]);
 
-  // ✅ Click ra ngoài để đóng dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -461,9 +517,8 @@ export function CreateImportModal({ onClose, onSave }) {
       return;
     }
 
-     setIsSaving(true);
+    setIsSaving(true);
     try {
-      // ✅ Gửi đúng cấu trúc Backend yêu cầu
       await onSave({
         supplierId: selectedSupplier,
         note: '',
@@ -476,9 +531,8 @@ export function CreateImportModal({ onClose, onSave }) {
     }
   };
 
-  // Lọc danh sách nhà cung cấp theo từ khóa tìm kiếm
-  const filteredSuppliers = suppliers.filter(sup => 
-    sup.name.toLowerCase().includes(searchSupplier.toLowerCase()) ||
+  const filteredSuppliers = suppliers.filter(sup =>
+    (sup.name || '').toLowerCase().includes(searchSupplier.toLowerCase()) ||
     (sup.code || '').toLowerCase().includes(searchSupplier.toLowerCase())
   );
   const selectedSupplierInfo = suppliers.find(supplier => supplier.id === selectedSupplier);
@@ -492,11 +546,9 @@ export function CreateImportModal({ onClose, onSave }) {
         </div>
         
         <div style={s.modalBody}>
-          {/* PHẦN NHÀ CUNG CẤP CÓ TÌM KIẾM */}
           <div style={s.prodInputGroup} ref={dropdownRef}>
             <label style={s.prodLabel}>Nhà cung cấp *</label>
             <div style={{ position: 'relative' }}>
-                {/* Ô hiển thị nhà cung cấp đã chọn */}
                 <div 
                   onClick={() => { setIsSupplierDropdownOpen(!isSupplierDropdownOpen); setSearchSupplier(''); }}
                   style={{ ...s.prodInput, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -507,10 +559,8 @@ export function CreateImportModal({ onClose, onSave }) {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </div>
 
-                {/* Dropdown hiện ra khi click */}
                 {isSupplierDropdownOpen && (
                   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '250px', display: 'flex', flexDirection: 'column' }}>
-                    {/* Ô tìm kiếm */}
                     <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
                       <input 
                         type="text" 
@@ -522,7 +572,6 @@ export function CreateImportModal({ onClose, onSave }) {
                         autoFocus
                       />
                     </div>
-                    {/* Danh sách kết quả */}
                     <div style={{ overflowY: 'auto' }}>
                       {filteredSuppliers.length === 0 ? (
                         <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>Không tìm thấy nhà cung cấp.</div>
@@ -543,7 +592,6 @@ export function CreateImportModal({ onClose, onSave }) {
               </div>
           </div>
 
-          {/* KHUNG CHỨA BẢNG SẢN PHẨM (Dùng Grid để không bao giờ tràn) */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
             {selectedSupplier && <div style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
               <input
@@ -555,7 +603,6 @@ export function CreateImportModal({ onClose, onSave }) {
               />
             </div>}
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-              {/* Header của bảng */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '12px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
                 <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none' }}>Sản phẩm</div>
                 <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none', textAlign: 'right' }}>Số lượng</div>
@@ -617,11 +664,36 @@ export function CreateImportModal({ onClose, onSave }) {
 // ==========================================
 function CreateExportModal({ onClose, onSave }) {
   const { notify } = useToast();
+  const { currentUser } = useAuth(); 
+  
   const [isSaving, setIsSaving] = useState(false);
   const [quantities, setQuantities] = useState({});
-  const [request, setRequest] = useState('');
+  const [exportType, setExportType] = useState('SALE');
+  const [note, setNote] = useState('');
+
+  // State Đại lý
+  const [partners, setPartners] = useState([]);
+  const [loadingPartners, setLoadingPartners] = useState(false);
+  const [selectedPartner, setSelectedPartner] = useState('');
+  
+  // State Thêm đại lý mới (Đã thêm address vào state)
+  const [isAddingPartner, setIsAddingPartner] = useState(false);
+  const [newPartnerData, setNewPartnerData] = useState({ 
+    name: '', 
+    code: '', 
+    phone: '', 
+    address: '', 
+    status: 'ACTIVE' 
+  });
+  
+  const [isPartnerDropdownOpen, setIsPartnerDropdownOpen] = useState(false);
+  const [searchPartner, setSearchPartner] = useState('');
+  const partnerDropdownRef = useRef(null);
+
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+
+  const partnerSource = EXPORT_PARTNER_SOURCE[exportType];
 
   useEffect(() => {
     productApi.list({ page: 0, size: 100, status: 'ACTIVE' })
@@ -630,13 +702,91 @@ function CreateExportModal({ onClose, onSave }) {
       .finally(() => setLoadingProducts(false));
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    setSelectedPartner('');
+    setSearchPartner('');
+    setIsPartnerDropdownOpen(false);
+    setIsAddingPartner(false);
+
+    if (partnerSource.kind === 'none') {
+      const userName = currentUser?.fullName || currentUser?.username || currentUser?.name || 'Người dùng hệ thống';
+      setSelectedPartner(userName);
+      setLoadingPartners(false);
+    } else {
+      setLoadingPartners(true);
+      fetchPartnersByExportType(exportType)
+        .then(list => {
+          if (!active) return;
+          setPartners(list);
+          if (list.length === 1) setSelectedPartner(list[0].name);
+        })
+        .finally(() => { if (active) setLoadingPartners(false); });
+    }
+
+    return () => { active = false; };
+  }, [exportType, currentUser]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (partnerDropdownRef.current && !partnerDropdownRef.current.contains(event.target)) {
+        setIsPartnerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleQtyChange = (id, val) => setQuantities(prev => ({ ...prev, [id]: val }));
 
-  const handleSave = async () => {
-    if (!request.trim()) {
-      notify('Vui lòng nhập mã yêu cầu đã duyệt.', 'error');
+  const filteredPartners = partners.filter(p =>
+    (p.name || '').toLowerCase().includes(searchPartner.toLowerCase())
+  );
+
+  // Xử lý thêm đại lý mới (Đã fix lỗi undefined và bổ sung trường mặc định)
+  // Xử lý thêm đại lý mới (Chỉ gửi trường tối thiểu để tránh lỗi 400)
+  const handleAddPartner = async () => {
+    if (!newPartnerData?.name?.trim()) {
+      notify('Vui lòng nhập tên đại lý.', 'error');
       return;
     }
+    
+    try {
+      if (partnerSource.kind === 'customer') {
+        // ✅ Chỉ gửi name và dealerCode (bỏ các trường dư thừa để không bị lỗi 400)
+        const payload = {
+          name: newPartnerData.name.trim(),
+          dealerCode: newPartnerData.code?.trim() || `DL-${Date.now().toString().slice(-6)}`,
+        };
+
+        const newDealer = await dealerApi.create(payload);
+        
+        const dealerName = newDealer.name || newDealer.dealerName || payload.name;
+        setPartners(prev => [...prev, { id: newDealer.id || Date.now(), name: dealerName }]);
+        setSelectedPartner(dealerName);
+      }
+      
+      setIsAddingPartner(false);
+      setNewPartnerData({ name: '', code: '', phone: '', address: '', status: 'ACTIVE' });
+      notify(`Đã thêm ${partnerSource.label.toLowerCase()} mới.`);
+      
+    } catch (err) {
+      console.error("Chi tiết lỗi thêm đối tác:", err);
+      const errorMsg = err.response?.data?.message || err.message || `Lỗi khi thêm ${partnerSource.label.toLowerCase()}.`;
+      notify(errorMsg, 'error');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!exportType) {
+      notify('Vui lòng chọn loại xuất kho.', 'error');
+      return;
+    }
+    if (!selectedPartner?.trim()) {
+      notify(`Vui lòng chọn ${partnerSource.label.toLowerCase()}.`, 'error');
+      return;
+    }
+
     const selectedItems = products
       .filter(p => Number(quantities[p.id]) > 0)
       .map(p => ({ productId: p.id, quantity: Number(quantities[p.id]) }));
@@ -649,9 +799,9 @@ function CreateExportModal({ onClose, onSave }) {
     setIsSaving(true);
     try {
       await onSave({
-        requestCode: request.trim(),
-        partnerName: request,
-        note: '',
+        partnerName: selectedPartner.trim(),
+        exportType,
+        note: note.trim(),
         lines: selectedItems,
       });
     } catch (e) {
@@ -661,36 +811,169 @@ function CreateExportModal({ onClose, onSave }) {
     }
   };
 
+  const selectedTypeInfo = EXPORT_TYPES.find(t => t.value === exportType);
+
   return (
     <div style={s.modalOverlay} onClick={onClose}>
       <div style={{ ...s.modalContent, maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
         <div style={s.modalHeader}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Tạo phiếu xuất từ yêu cầu đã duyệt</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Tạo phiếu xuất kho</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
-        
+
         <div style={s.modalBody}>
           <div style={s.prodInputGroup}>
-            <label style={s.prodLabel}>Mã yêu cầu / Đối tác *</label>
-            <input 
-              type="text" 
-              placeholder="VD: YC-DEMO-001 hoặc Tên đối tác..." 
-              style={s.prodInput} 
-              value={request} 
-              onChange={(e) => setRequest(e.target.value)} 
+            <label style={s.prodLabel}>Loại xuất kho *</label>
+            <select
+              value={exportType}
+              onChange={(e) => setExportType(e.target.value)}
+              style={s.prodInput}
+            >
+              {EXPORT_TYPES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+            {selectedTypeInfo && (
+              <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                {selectedTypeInfo.description}
+              </span>
+            )}
+          </div>
+
+          <div style={s.prodInputGroup} ref={partnerDropdownRef}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <label style={s.prodLabel}>{partnerSource?.label || 'Đối tác'} *</label>
+              {!isAddingPartner && partnerSource?.kind === 'customer' && (
+                <button 
+                  onClick={() => setIsAddingPartner(true)} 
+                  style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '13px', fontWeight: '500', padding: 0 }}
+                >
+                  + Thêm {partnerSource.label.toLowerCase()} mới
+                </button>
+              )}
+            </div>
+
+            {isAddingPartner ? (
+              <div style={{ border: '1px solid #d1d5db', borderRadius: '8px', padding: '16px', backgroundColor: '#f9fafb', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '4px' }}>Thêm đại lý mới</div>
+                
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <input
+                    type="text"
+                    placeholder="Tên đại lý *"
+                    style={{ ...s.prodInput, flex: 2 }}
+                    value={newPartnerData.name}
+                    onChange={(e) => setNewPartnerData(prev => ({ ...prev, name: e.target.value }))}
+                    autoFocus
+                  />
+                  <input
+                    type="text"
+                    placeholder="Mã đại lý (Tùy chọn)"
+                    style={{ ...s.prodInput, flex: 1 }}
+                    value={newPartnerData.code}
+                    onChange={(e) => setNewPartnerData(prev => ({ ...prev, code: e.target.value }))}
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <input
+                    type="text"
+                    placeholder="Số điện thoại (Tùy chọn)"
+                    style={{ ...s.prodInput, flex: 1 }}
+                    value={newPartnerData.phone}
+                    onChange={(e) => setNewPartnerData(prev => ({ ...prev, phone: e.target.value }))}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Địa chỉ (Tùy chọn)"
+                    style={{ ...s.prodInput, flex: 1 }}
+                    value={newPartnerData.address}
+                    onChange={(e) => setNewPartnerData(prev => ({ ...prev, address: e.target.value }))}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <button onClick={() => setIsAddingPartner(false)} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: '500' }}>Hủy</button>
+                  <button onClick={handleAddPartner} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', backgroundColor: '#10b981', color: '#fff', cursor: 'pointer', fontWeight: '500' }}>Lưu đại lý</button>
+                </div>
+              </div>
+            ) : partnerSource?.kind === 'none' ? (
+              <input
+                type="text"
+                style={{ ...s.prodInput, backgroundColor: '#f3f4f6', cursor: 'not-allowed', color: '#6b7280' }}
+                value={selectedPartner}
+                disabled
+              />
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <div
+                  onClick={() => { setIsPartnerDropdownOpen(!isPartnerDropdownOpen); setSearchPartner(''); }}
+                  style={{ ...s.prodInput, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span style={{ color: selectedPartner ? '#111827' : '#9ca3af' }}>
+                    {loadingPartners
+                      ? `Đang tải ${partnerSource.label.toLowerCase()}...`
+                      : (selectedPartner || `Chọn ${partnerSource.label.toLowerCase()}...`)}
+                  </span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+
+                {isPartnerDropdownOpen && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '250px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                      <input
+                        type="text"
+                        placeholder={`Tìm ${partnerSource.label.toLowerCase()}...`}
+                        value={searchPartner}
+                        onChange={(e) => setSearchPartner(e.target.value)}
+                        style={{ ...s.prodInput, padding: '8px 12px' }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ overflowY: 'auto' }}>
+                      {filteredPartners.length === 0 ? (
+                        <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>
+                          Không có {partnerSource.label.toLowerCase()} nào.
+                        </div>
+                      ) : (
+                        filteredPartners.map((p) => (
+                          <div
+                            key={p.id || p.name}
+                            onClick={() => { setSelectedPartner(p.name); setIsPartnerDropdownOpen(false); }}
+                            style={{ padding: '10px 12px', cursor: 'pointer', fontSize: '14px', backgroundColor: selectedPartner === p.name ? '#eff6ff' : '#fff', color: selectedPartner === p.name ? '#2563eb' : '#374151', borderBottom: '1px solid #f3f4f6' }}
+                            onMouseEnter={(e) => { if (selectedPartner !== p.name) e.currentTarget.style.backgroundColor = '#f9fafb'; }}
+                            onMouseLeave={(e) => { if (selectedPartner !== p.name) e.currentTarget.style.backgroundColor = '#fff'; }}
+                          >
+                            {p.name}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={s.prodInputGroup}>
+            <label style={s.prodLabel}>Ghi chú</label>
+            <input
+              type="text"
+              placeholder="Ghi chú thêm (không bắt buộc)..."
+              style={s.prodInput}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
             />
           </div>
 
-          {/* KHUNG CHỨA BẢNG SẢN PHẨM (Dùng Grid để không bao giờ tràn) */}
           <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
             <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-              {/* Header của bảng */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '12px', padding: '12px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 1 }}>
                 <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none' }}>Sản phẩm</div>
                 <div style={{ ...s.th, padding: 0, backgroundColor: 'transparent', borderBottom: 'none', textTransform: 'none', textAlign: 'right' }}>Số lượng</div>
               </div>
-              
-              {/* Danh sách sản phẩm */}
+
               {loadingProducts ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>Đang tải danh sách sản phẩm...</div>
               ) : products.length === 0 ? (
@@ -703,13 +986,13 @@ function CreateExportModal({ onClose, onSave }) {
                       <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>{p.sku}</div>
                     </div>
                     <div>
-                      <input 
-                        type="number" 
-                        min="0" 
-                        placeholder="0" 
-                        value={quantities[p.id] || ''} 
-                        onChange={(e) => handleQtyChange(p.id, e.target.value)} 
-                        style={{ ...s.prodInput, textAlign: 'center', padding: '8px', backgroundColor: '#f9fafb' }} 
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={quantities[p.id] || ''}
+                        onChange={(e) => handleQtyChange(p.id, e.target.value)}
+                        style={{ ...s.prodInput, textAlign: 'center', padding: '8px', backgroundColor: '#f9fafb' }}
                       />
                     </div>
                   </div>
@@ -887,6 +1170,7 @@ export function ExportPage() {
   const [vouchers, setVouchers] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [typeFilter, setTypeFilter] = useState('');
 
   const isMounted = useRef(false);
 
@@ -908,11 +1192,14 @@ export function ExportPage() {
     loadVouchers();
   }, []);
 
-  const filteredVouchers = vouchers.filter(v =>
-    (v.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    String(v.id ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (v.partner || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredVouchers = vouchers.filter(v => {
+    const matchesSearch =
+      (v.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(v.id ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (v.partner || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = !typeFilter || v.exportType === typeFilter;
+    return matchesSearch && matchesType;
+  });
 
   const handleSaveNew = async (payload) => {
     const created = await exportApi.create(payload);
@@ -952,20 +1239,52 @@ export function ExportPage() {
       <div style={s.card}>
         <div style={s.filterRow}>
           <div style={s.searchWrapper}><SearchIcon /><input type="text" placeholder="Tìm theo mã phiếu hoặc đối tác..." style={s.searchInput} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            style={{ ...s.prodInput, width: '220px', flex: 'none' }}
+          >
+            <option value="">Tất cả loại xuất</option>
+            {EXPORT_TYPES.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
           <span style={{ fontSize: '14px', color: '#6b7280' }}>{filteredVouchers.length} kết quả</span>
         </div>
         <table style={s.table}>
-          <thead><tr><th style={s.th}>MÃ PHIẾU</th><th style={s.th}>ĐỐI TÁC</th><th style={s.th}>NGÀY TẠO</th><th style={s.th}>TỔNG SL</th><th style={s.th}>TRẠNG THÁI</th><th style={s.th}></th></tr></thead>
+          <thead>
+            <tr>
+              <th style={s.th}>MÃ PHIẾU</th>
+              <th style={s.th}>ĐỐI TÁC</th>
+              <th style={s.th}>LOẠI XUẤT</th>
+              <th style={s.th}>NGÀY TẠO</th>
+              <th style={s.th}>TỔNG SL</th>
+              <th style={s.th}>TRẠNG THÁI</th>
+              <th style={s.th}></th>
+            </tr>
+          </thead>
           <tbody>
             {loadingList ? (
-              <tr><td colSpan="6" style={s.emptyTd}>Đang tải dữ liệu...</td></tr>
+              <tr><td colSpan="7" style={s.emptyTd}>Đang tải dữ liệu...</td></tr>
             ) : filteredVouchers.length === 0 ? (
-              <tr><td colSpan="6" style={s.emptyTd}>Không tìm thấy phiếu xuất nào phù hợp.</td></tr>
+              <tr><td colSpan="7" style={s.emptyTd}>Không tìm thấy phiếu xuất nào phù hợp.</td></tr>
             ) : (
               filteredVouchers.map((row) => (
                 <tr key={row.id}>
                   <td style={s.td}><span style={s.codeText}>{row.code || row.id}</span></td>
                   <td style={s.td}>{row.partner || '—'}</td>
+                  <td style={s.td}>
+                    {row.exportType ? (
+                      <span style={{
+                        backgroundColor: row.exportType === 'SALE' ? '#eef2ff' : '#fee2e2',
+                        color: row.exportType === 'SALE' ? '#3730a3' : '#991b1b',
+                        padding: '4px 8px', borderRadius: '4px',
+                        fontSize: '12px', fontWeight: '500'
+                      }}>
+                        {getExportTypeLabel(row.exportType)}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td style={s.td}>{row.createdAt ? new Date(row.createdAt).toLocaleString('vi-VN') : (row.date || '—')}</td>
                   <td style={s.td}>{row.totalQuantity ?? row.qty ?? 0}</td>
                   <td style={s.td}><span style={getVoucherStatusStyle(row.status)}>{getVoucherStatusLabel(row.status)}</span></td>
